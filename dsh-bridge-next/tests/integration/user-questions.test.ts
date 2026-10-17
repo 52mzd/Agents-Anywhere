@@ -20,7 +20,7 @@ import { SyncFeed, type SyncBatch } from '../../src/host/dsh-runtime/sync.js'
 import { sessionId } from '../../src/host/dsh-runtime/identity.js'
 import type { Context } from '@deepseek-ai/cordis'
 import { UserQuestions } from '../../src/host/dsh-runtime/questions.js'
-import { openInteractionEvents } from '../../src/host/dsh-runtime/interaction-stream.js'
+import { interactionPeer, openInteractionEvents } from '../../src/host/dsh-runtime/interaction-stream.js'
 
 const questions = [
   { id: 'mode', question: '选择模式', options: [{ label: '标准' }, { label: '快速' }] },
@@ -75,7 +75,7 @@ async function fixture() {
 
 async function remote(ctx: Context) {
   const abort = new AbortController()
-  const stream = (await openInteractionEvents(ctx.typertGateway.wireStream, abort.signal))[Symbol.asyncIterator]()
+  const stream = (await openInteractionEvents(ctx.typertGateway.wireStream, abort.signal, interactionPeer(ctx.connection)))[Symbol.asyncIterator]()
   const ready = (await stream.next()).value as { clientId: string }
   const questions = new Set<unknown>()
   return { next: async () => {

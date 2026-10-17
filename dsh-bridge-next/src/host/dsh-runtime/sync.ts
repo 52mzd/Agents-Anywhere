@@ -31,6 +31,7 @@ export class SyncFeed {
   readonly id = randomUUID()
   private batchSeq = 0
   private queue: NativeChange[] = []
+  private queuedInvalidations = new Set<string>()
   private queuedBytes = 0
   private projections = new Map<string, SessionProjection>()
   private published = new Map<string, string>()
@@ -53,6 +54,13 @@ export class SyncFeed {
     private ackTimeoutMs = 60_000, private durableCheckpoints = false, private uploadProgress = false) {
     this.unwatch = native.watch(change => {
       if (this.closed) return
+      // These events invalidate current facts; replaying every invalidation
+      // cannot recover an intermediate value and can starve the initial scan.
+      if (!('id' in change)) {
+        const key = change.type === 'catalogs' ? `catalogs:${change.catalogType}` : change.type
+        if (this.queuedInvalidations.has(key)) return
+        this.queuedInvalidations.add(key)
+      }
       try { this.queuedBytes += jsonBytes(change) }
       catch (error) {
         this.native.diagnostics.log('error', 'sync.event_failed', { streamId: this.id, sessionId: 'id' in change ? change.id : undefined }, error)
@@ -100,6 +108,7 @@ export class SyncFeed {
     this.waitAck = undefined
     this.wake?.(); this.wake = undefined
     this.queue = []; this.queuedBytes = 0; this.projections.clear()
+    this.queuedInvalidations.clear()
     this.failedSessions.clear()
     this.bufferedOperations = undefined; this.bufferedBytes = 0
   }
@@ -320,13 +329,10 @@ export class SyncFeed {
   private async changes(changes: NativeChange[]): Promise<void> {
     const touched = new Set<string>(), statuses = new Set<string>(), capabilities = new Set<string>()
     const ended: [string, Record<string, unknown>][] = []
-    let reconcile = false
+    let reconcile = false, runtimeCapabilities = false, allSessionCapabilities = false
     for (const change of changes) {
       if (change.type === 'capabilities' || change.type === 'commands') {
-        await this.runtimeOperation('capabilities', async () => this.notification('runtime.capability.updated', await this.native.capabilities()))
-        for (const id of this.published.keys()) await this.sessionOperation(id, 'capabilities', async () => {
-          await this.notification('session.capability.updated', await this.native.capabilities(this.published.get(id), id as SessionId))
-        })
+        runtimeCapabilities = true; allSessionCapabilities = true
         continue
       }
       if (change.type === 'catalogs') {
@@ -337,7 +343,7 @@ export class SyncFeed {
           await this.runtimeOperation('permissions', async () => this.notification('catalog.permission.update', this.native.catalogs.permissions()))
         }
         if (change.catalogType === 'model') {
-          await this.runtimeOperation('capabilities', async () => this.notification('runtime.capability.updated', await this.native.capabilities()))
+          runtimeCapabilities = true
         }
         continue
       }
@@ -393,6 +399,8 @@ export class SyncFeed {
       if (this.published.has(id) && await this.native.visible(id)) await this.notification('session.turnEnded', params)
     })
     for (const id of statuses) await this.sessionOperation(id, 'state', () => this.state(id))
+    if (runtimeCapabilities) await this.runtimeOperation('capabilities', async () => this.notification('runtime.capability.updated', await this.native.capabilities()))
+    if (allSessionCapabilities) for (const id of this.published.keys()) capabilities.add(id)
     for (const id of capabilities) await this.sessionOperation(id, 'capabilities', async () => {
       if (this.published.has(id)) await this.notification('session.capability.updated', await this.native.capabilities(this.published.get(id), id as SessionId))
     })
@@ -404,6 +412,9 @@ export class SyncFeed {
       await this.baseline(entry.header.id, true)
       await this.rememberCheckpoints()
     })
+    // Startup changes use the same batching as live changes. Otherwise one
+    // capability update incurs a separate transport round trip per session.
+    this.bufferedOperations = []
     await this.changes(this.takeChanges())
     await this.rememberCheckpoints()
     const sessions = []
@@ -411,6 +422,8 @@ export class SyncFeed {
       externalSessionId: id, sourceState: await this.sourceState(id) })
     await this.notification('session.inventory.complete', { scanToken: this.id, complete: true,
       sessions })
+    await this.flushOperations()
+    this.bufferedOperations = undefined
     this.native.diagnostics.log('info', 'sync.inventory_completed', { streamId: this.id, sessions: this.published.size })
     while (!this.closed) {
       if (!this.queue.length) await new Promise<void>(resolve => { this.wake = resolve })
@@ -438,7 +451,10 @@ export class SyncFeed {
     }
     this.checkpointDirty.clear()
   }
-  private takeChanges(): NativeChange[] { this.queuedBytes = 0; return this.queue.splice(0) }
+  private takeChanges(): NativeChange[] {
+    this.queuedBytes = 0; this.queuedInvalidations.clear()
+    return this.queue.splice(0)
+  }
 
 }
 

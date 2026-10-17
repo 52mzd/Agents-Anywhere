@@ -16,6 +16,7 @@ import { projectHistory } from '../../src/host/dsh-runtime/history.js'
 import { nativeSessionId, sessionId } from '../../src/host/dsh-runtime/identity.js'
 import { createConnection } from 'node:net'
 import { createInterface } from 'node:readline'
+import { RuntimeRouter } from '../../src/host/dsh-runtime/router.js'
 
 async function until(check: () => boolean, label: string) {
   for (let n = 0; n < 400; n++) { if (check()) return; await delay(10) }
@@ -44,6 +45,38 @@ function follow(native: ReturnType<typeof nativeRuntime> extends Promise<infer T
   feed.start()
   return { feed, batches, errors, ops: () => batches.flatMap(b => b.operations) }
 }
+
+test('startup invalidation bursts stay bounded and state reads and messaging remain usable', { timeout: 30_000 }, async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-startup-invalidations-'))
+  const adapter = new TextAdapter()
+  const fixture = await nativeRuntime(home, ctx => mountAgents(ctx, adapter))
+  const native = fixture.ctx.agentsAnywhereRuntime.native
+  const stream = follow(native)
+  const router = new RuntimeRouter({ native, query: fixture.ctx.sessionQuery, status: id => native.status(id) }, 'test')
+  const request = (method: string, params: Record<string, unknown>) => router.request(method, params, AbortSignal.timeout(5_000))
+  const notes = () => notifications(stream.ops())
+  try {
+    // Reconnects and service registration can invalidate the same facts many
+    // times while the feed is still uploading its first session snapshots.
+    for (let i = 0; i < 12_000; i++) native.commands.invalidate()
+    await until(() => notes().some(n => n.method === 'session.inventory.complete'), 'inventory completes despite duplicate invalidations')
+    assert.deepEqual(stream.errors, [])
+    assert.equal(notes().filter(n => n.method === 'runtime.capability.updated').length, 1)
+    assert.equal(notes().filter(n => n.method === 'session.capability.updated').length, 2)
+    const completedBatch = stream.batches.find(b => notifications(b.operations).some(n => n.method === 'session.inventory.complete'))!
+    assert.equal(notifications(completedBatch.operations).filter(n => n.method === 'session.capability.updated').length, 2,
+      'startup state changes and inventory completion share a bounded transport batch')
+    const params = { sessionId: sessionId('test', 'persisted-only'), externalSessionId: 'persisted-only' }
+    assert.equal((await request('session.getState', params) as { status: string }).status, 'idle')
+    const sent = await request('session.startTurn', { ...params, content: '继续对话', clientMessageId: 'startup-send' })
+    assert.equal((sent as { accepted: boolean }).accepted, true, JSON.stringify(sent))
+    await until(() => !!adapter.release, 'message reaches the official Agent loop')
+    adapter.release!()
+    await until(() => notes().some(n => n.method === 'session.turnEnded'), 'reply and turn completion reach the sync feed')
+    assert.ok(JSON.stringify(notes()).includes('你好'))
+    assert.deepEqual(stream.errors, [])
+  } finally { router.close(); stream.feed.close(); await fixture.ctx.fiber.dispose(); await rm(home, { recursive: true, force: true }) }
+})
 
 test('one corrupt persisted session does not break inventory, healthy streaming or explicit recovery', { timeout: 30_000 }, async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-unreadable-'))
