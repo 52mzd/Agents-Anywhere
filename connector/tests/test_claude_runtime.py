@@ -815,6 +815,56 @@ async def _test_claude_runtime_lists_sessions_from_sdk_history() -> None:
     assert sdk.list_calls == [{"limit": 10, "offset": 0}]
 
 
+def test_claude_runtime_caps_prompt_derived_session_titles() -> None:
+    asyncio.run(_test_claude_runtime_caps_prompt_derived_session_titles())
+
+
+async def _test_claude_runtime_caps_prompt_derived_session_titles() -> None:
+    pasted_prompt = "帮我总结会议 并提取任务\n\n  第一阶段是分支数据定义" + "，就是各种质量分析" * 400
+    long_custom_title = "Custom " + "title " * 20
+    sdk = _HistorySdk(
+        sessions=[
+            SimpleNamespace(
+                session_id="claude_long_prompt",
+                summary=pasted_prompt,
+                custom_title=None,
+                first_prompt=pasted_prompt,
+                last_modified=1_789_000_000_000,
+                file_size=123,
+            ),
+            SimpleNamespace(
+                session_id="claude_custom_title",
+                summary=pasted_prompt,
+                custom_title=long_custom_title,
+                first_prompt=pasted_prompt,
+                last_modified=1_789_000_000_000,
+                file_size=123,
+            ),
+            SimpleNamespace(
+                session_id="claude_blank_prompt",
+                summary=None,
+                custom_title=None,
+                first_prompt=" \n\t ",
+                last_modified=1_789_000_000_000,
+                file_size=123,
+            ),
+        ]
+    )
+    runtime = _runtime(host=_RecordingHost(), sdk=sdk)
+
+    sessions = {s.external_session_id: s for s in await runtime.list_sessions(limit=10)}
+
+    capped = sessions["claude_long_prompt"].title
+    assert capped is not None
+    assert capped.startswith("帮我总结会议 并提取任务 第一阶段是分支数据定义")
+    assert capped.endswith("...")
+    assert len(capped) <= 48 + len("...")
+    assert "\n" not in capped
+    # Explicit (user or Claude AI) titles are never rewritten.
+    assert sessions["claude_custom_title"].title == long_custom_title
+    assert sessions["claude_blank_prompt"].title is None
+
+
 def test_claude_runtime_session_sync_marker_skips_unchanged_history() -> None:
     asyncio.run(_test_claude_runtime_session_sync_marker_skips_unchanged_history())
 
@@ -2153,7 +2203,9 @@ async def _test_claude_runtime_lists_models_reported_by_claude_code() -> None:
     ]
     assert catalog.revision == 1004
     default = catalog.models[0]
-    assert default.title == "Default (recommended)"
+    assert default.title == "Default (Opus 5.5, 1M context)"
+    assert default.metadata["cliDisplayName"] == "Default (recommended)"
+    assert catalog.models[1].title == "Opus 5.5 (1M context)"
     assert default.description == "Opus 5.5 with 1M context"
     assert default.metadata["source"] == "claude-code.initialize"
     assert default.metadata["resolvedModel"] == "claude-opus-5-5[1m]"
@@ -2220,7 +2272,8 @@ async def _test_claude_runtime_resolves_cli_selection_before_first_catalog_read(
             ClaudeSDKClient=_DiscoveryClientType(server_info={"models": _CLI_MODELS})
         )
     ).list_model_catalog(query="opus")
-    selection_id = listed.models[0].selection_id
+    # The default entry is titled with its Opus version and matches the query too.
+    selection_id = next(model for model in listed.models if model.id == "opus[1m]").selection_id
 
     client = _FakeClaudeClient(
         messages=[SimpleNamespace(type="result", session_id="claude_restart")]
