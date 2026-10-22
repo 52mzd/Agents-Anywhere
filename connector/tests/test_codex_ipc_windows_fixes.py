@@ -502,4 +502,5 @@ def test_windows_client_is_disabled_on_a_loop_without_pipe_support(tmp_path, mon
         assert client._task is None
         await client.stop()
 
-    asyncio.run(run())
+    # Windows defaults to the proactor loop; pin the selector loop everywhere.
+    asyncio.run(run(), loop_factory=asyncio.SelectorEventLoop)
