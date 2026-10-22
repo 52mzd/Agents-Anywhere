@@ -56,9 +56,10 @@ struct AuthWelcomeLayout<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            Spacer()
+            // 视觉重心下移：顶部弹性空间保底更高，品牌区避开屏幕顶部圆角。
+            Spacer(minLength: 168)
             content
-            Spacer()
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 24)
