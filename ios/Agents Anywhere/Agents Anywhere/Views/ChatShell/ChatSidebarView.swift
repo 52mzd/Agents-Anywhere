@@ -207,6 +207,8 @@ struct ChatSidebarHeaderView: View {
         AAWordmark(fontSize: 24)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .padding(.horizontal, 18)
+            // 下移避开顶部刘海/圆角：safe area 之上再垫 20pt，与状态栏分层。
+            .padding(.top, 20)
             .containerCornerOffset(.horizontal, sizeToFit: true)
     }
 }
