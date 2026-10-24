@@ -71,7 +71,7 @@ export class NativeRuntime {
     this.catalogs = new RuntimeCatalogs(ctx, () => this.emit({ type: 'catalogs', catalogType: 'model' }))
     this.configuration = new RuntimeConfiguration(ctx)
     this.source = new NativeSessionSource(ctx, diagnostics)
-    this.commands = new RuntimeCommands(ctx, this.configuration, this.source, () => this.emit({ type: 'commands' }))
+    this.commands = new RuntimeCommands(ctx, this.configuration, this.source, () => this, () => this.emit({ type: 'commands' }))
     ctx.on('llm/adapters-updated', () => this.catalogs.invalidate(), { global: true })
     ctx.on('permission-presets/catalog-changed', () => this.emit({ type: 'catalogs', catalogType: 'permission' }), { global: true })
     for (const key of ['sessionController', 'permissionPresets', 'commands', 'agentPresets', 'attachments', 'fileUploads'] as const) {

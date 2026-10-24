@@ -9,7 +9,8 @@ import { commandRuntime } from '../fixtures/command-runtime.js'
 import { SyncFeed, type SyncOperation, type SyncTransport } from '../../src/host/dsh-runtime/sync.js'
 import { BridgeError } from '../../src/host/dsh-runtime/errors.js'
 import { nativeRuntime } from '../fixtures/native-runtime.js'
-import { mountAgents } from '../fixtures/agent-runtime.js'
+import { mountAgents, TextAdapter } from '../fixtures/agent-runtime.js'
+import SkillRegistry from '@deepseek-ai/dsh-skill'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -44,6 +45,44 @@ test('AA exposes and executes only compact even when UI-dependent commands are r
   const result = await f.router.request('executeCommand', { ...params, command: 'compact', raw: '/compact' }, signal()) as Result
   assert.equal(result.ok, true)
   assert.deepEqual(calls, ['compact'])
+}))
+
+test('AA lists the model selector and session skills, executing skills as queued user messages', async () => fixture(async f => {
+  const { agent, params } = await f.create('menu')
+  f.ctx.commands.register({ name: 'compact', description: 'compact', handler: () => ({ kind: 'success' }) })
+  const adapter = new TextAdapter()
+  f.ctx.llm.registerAdapter(['test'], adapter)
+  // Real registry + real SessionSkillCatalog; runtime skills default to user-invocable.
+  await f.ctx.plugin(SkillRegistry).await()
+  f.ctx.skills.register({ name: 'animate', description: 'Build an animation', content: 'Animate things.' })
+  // A skill shadowing a native entry id stays hidden behind that entry.
+  f.ctx.skills.register({ name: 'model', description: 'shadowed by the selector entry', content: 'Unused.' })
+  const list = async (values = {}) => (await f.router.request('listCommands', { ...params, ...values }, signal()) as { commands: Descriptor[] }).commands
+  const menu = await list()
+  assert.deepEqual(menu.map(c => c.id), ['compact', 'model', 'animate'])
+  const model = menu.find(c => c.id === 'model')!
+  assert.equal(model.metadata.ui.kind, 'selector')
+  assert.equal(model.metadata.ui.target, 'model')
+  assert.equal(model.acceptsArgs, false)
+  const skill = menu.find(c => c.id === 'animate')!
+  assert.equal(skill.acceptsArgs, true)
+  assert.equal(skill.metadata.ui.kind, 'execute')
+  assert.deepEqual(await list({ query: 'nothing-matches' }), [])
+  assert.deepEqual((await list({ query: 'animation' })).map(c => c.id), ['animate'])
+  // Skill execution is one queued user message; DSH's agent pre-step reads the /name token.
+  const result = await f.router.request('executeCommand', { ...params, command: 'animate', raw: '/animate fade the card' }, signal()) as Result
+  assert.equal(result.ok, true)
+  assert.equal(result.result.executionState, 'accepted')
+  for (let i = 0; i < 200 && !adapter.release; i++) await delay(10)
+  assert.ok(adapter.release, 'message reaches the official Agent loop')
+  adapter.release!()
+  assert.ok(JSON.stringify(agent.session.snapshotEvents().filter(e => e.type === 'user/message')).includes('/animate fade the card'))
+  const missing = await f.router.request('executeCommand', { ...params, command: 'gone', raw: '/gone' }, signal()) as Result
+  assert.equal(missing.ok, false)
+  assert.equal(missing.code, 'unknown_command')
+  const selector = await f.router.request('executeCommand', { ...params, command: 'model', raw: '/model' }, signal()) as Result
+  assert.equal(selector.ok, false)
+  assert.equal(selector.code, 'unknown_command')
 }))
 
 test('AA does not invent compact when the native Agent has no compact command', async () => fixture(async f => {
@@ -182,7 +221,7 @@ test('registry change refreshes existing capability signals with a restart-safe 
   assert.equal(initial.allowed, true)
   assert.equal(typeof initial.metadata?.catalogRevision, 'string')
   const { RuntimeCommands } = await import('../../src/host/dsh-runtime/commands.js')
-  const restarted = new RuntimeCommands(f.ctx, f.native.configuration, f.native.source, () => {})
+  const restarted = new RuntimeCommands(f.ctx, f.native.configuration, f.native.source, () => f.native, () => {})
   try { assert.notEqual((await restarted.capability()).catalogRevision, initial.metadata?.catalogRevision) }
   finally { restarted.close() }
   const batches: { batchSeq: number, operations: SyncOperation[] }[] = [], errors: unknown[] = []
