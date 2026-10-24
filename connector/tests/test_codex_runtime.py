@@ -5023,6 +5023,44 @@ async def _test_codex_runtime_failed_turn_creates_blocking_error_notice() -> Non
     assert error_update["error"]["code"] == "boom"
 
 
+def test_codex_runtime_new_turn_closes_previous_execution_error() -> None:
+    asyncio.run(_test_codex_runtime_new_turn_closes_previous_execution_error())
+
+
+async def _test_codex_runtime_new_turn_closes_previous_execution_error() -> None:
+    host = FakeHost()
+    runtime = CodexRuntime(config=_config(), host=host, client=FakeCodexClient())
+
+    await runtime._handle_notification(
+        {
+            "method": "turn/failed",
+            "params": {
+                "platformSessionId": "sess_1",
+                "threadId": "thread_1",
+                "turnId": "turn_failed",
+                "error": {"code": "boom", "message": "Exploded"},
+            },
+        }
+    )
+    await runtime._handle_notification(
+        {
+            "method": "turn/started",
+            "params": {
+                "platformSessionId": "sess_1",
+                "threadId": "thread_1",
+                "turnId": "turn_next",
+            },
+        }
+    )
+
+    assert [notice.status for notice in host.notice_upserts] == ["open", "closed"]
+    closed = host.notice_upserts[-1]
+    assert closed.notice_id == "notice_error_sess_1_turn_failed"
+    assert closed.blocking is None
+    assert closed.metadata["close_reason"] == "turn_started"
+    assert await runtime.get_session_notices("sess_1") == ()
+
+
 def test_codex_runtime_native_failed_completion_sets_error_state() -> None:
     asyncio.run(_test_codex_runtime_native_failed_completion_sets_error_state())
 

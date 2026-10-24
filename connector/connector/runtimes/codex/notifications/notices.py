@@ -158,6 +158,17 @@ class CodexNoticeHandler:
         ):
             await self.host.notice_upsert(notice)
 
+    async def close_execution_errors_for_started_turn(self, session_id: str) -> None:
+        """Dismiss stale failed-turn cards once a new turn starts."""
+
+        for notice in self.notices.close_execution_errors_for_session(
+            session_id=session_id,
+            status="closed",
+            reason="turn_started",
+            source="codex.turn/started",
+        ):
+            await self.host.notice_upsert(notice)
+
     def execution_error_notice(
         self,
         session_id: str,

@@ -101,3 +101,29 @@ class CodexNoticeRegistry:
             if next_notice is not None:
                 closed.append(next_notice)
         return tuple(closed)
+
+    def close_execution_errors_for_session(
+        self,
+        session_id: str,
+        status: str,
+        reason: str,
+        source: str,
+    ) -> tuple[SessionNotice, ...]:
+        closed: list[SessionNotice] = []
+        for notice in self.current_for_session(session_id):
+            if (
+                notice.status not in {"open", "responding"}
+                or notice.interaction_type != "execution_error"
+            ):
+                continue
+            next_notice = self.transition(
+                notice.notice_id,
+                status=status,
+                response_required=False,
+                blocking=None,
+                actions=(),
+                metadata={"source": source, "close_reason": reason},
+            )
+            if next_notice is not None:
+                closed.append(next_notice)
+        return tuple(closed)
