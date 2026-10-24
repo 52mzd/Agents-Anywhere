@@ -77,7 +77,7 @@ class FakeBridgeClient:
         if method == "getSessionCapabilities":
             return self._capabilities()
         if method == "listCommands":
-            assert params == {"sessionId": "session", "externalSessionId": "native", "query": "compact", "limit": 1}
+            assert set(params) == {"sessionId", "externalSessionId", "query", "limit"}
             return self._commands()
         if method == "executeCommand":
             self.executed.set()
@@ -194,21 +194,24 @@ def test_public_catalog_execution_preserves_native_descriptor_and_raw_correlatio
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("command", ["goal", "plan", "export", "feedback", "permission", "model", "file", "compact-thread"])
-def test_non_compact_commands_never_reach_the_bridge(command: str) -> None:
+@pytest.mark.parametrize("command", ["model", "animate", "compact"])
+def test_catalog_commands_are_forwarded_to_the_bridge(command: str) -> None:
     async def run() -> None:
         async with bridge() as (runtime, requests, _):
             result = await runtime.execute_command("session", command, "native", raw=f"/{command}")
-            assert not result.ok and result.code == "unknown_command"
-            assert not any(request["method"] == "executeCommand" for request in requests)
+            assert result.ok
+            assert any(
+                request["method"] == "executeCommand" and request["params"]["command"] == command
+                for request in requests
+            )
     asyncio.run(run())
 
 
-def test_catalog_filters_non_compact_commands_from_an_older_bridge() -> None:
+def test_catalog_passes_the_full_bridge_catalog_through() -> None:
     async def run() -> None:
         async with bridge(mode="wide-catalog") as (runtime, _, _):
-            catalog = await runtime.list_commands("session", "native", query="compact", limit=1)
-            assert [command.id for command in catalog] == ["compact"]
+            catalog = await runtime.list_commands("session", "native")
+            assert [command.id for command in catalog] == ["compact", "export", "goal", "permission"]
     asyncio.run(run())
 
 

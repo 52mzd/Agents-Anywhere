@@ -38,16 +38,21 @@ status when the native snapshot omits item status.
 
 ## DeepSeek Harness
 
-AA exposes only `/compact` for DSH. The bridge filters the current session
-Agent's native registry before applying search and limits. If that Agent has no
-registered `compact` command, the catalog is empty. Both the bridge and Python
-connector reject other command names, including commands that depend on DSH's
-client UI. The connector also filters catalogs returned by older bridges.
+The DSH bridge owns the catalog. Newer bridges expose the native `/compact`, a
+`/model` entry backed by AA's own model selector (`metadata.ui.kind: selector`),
+and the session's user-invocable DSH skills as queued `/name args` messages. The
+connector passes the bridge catalog through without filtering: the bridge
+validates command names against the live registry before execution and rejects
+unknown ones, including commands that depend on DSH's client UI. Older bridges
+that only advertise `compact` keep working; their narrower catalog is passed
+through unchanged.
 
 Compaction still runs through the native registry's parser and handler, preserving
-the exact submitted line and native result text. The shipped DSH command takes
-no arguments; its handler owns validation and busy-state rejection. Model and
-permission selection continue through the existing session controls.
+the exact submitted line and native result text. Skills execute exactly as they
+do in DSH's own composer: the `/name …` line goes out as one queued user message
+and the host injects the skill body. `/model` opens the model selector instead
+of executing a command. Model and permission selection continue through the
+existing session controls.
 
 The bridge emits a new catalog revision when the registry changes. The connector,
 server and Web client preserve it so the menu refreshes without reconnecting.
