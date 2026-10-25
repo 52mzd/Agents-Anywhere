@@ -98,10 +98,12 @@ private struct DuoArrangementBranch<Primary: View, Secondary: View, Fallback: Vi
                         // 真实 dock 由浮层承载。
                         secondary: Color.clear.frame(height: geo.size.height * 0.45),
                         onHinge: handleHinge)
-                    .ignoresSafeArea(.keyboard)
+                    // overlay 必须在 ignoresSafeArea 内侧：挂在外面时浮层
+                    // 容器仍被键盘 safe area 压缩（centerY 上移 → dock 被推上）。
                     .overlay {
                         DuoKeyboardDock(dock: secondary)
                     }
+                    .ignoresSafeArea(.keyboard)
                 }
             } else {
                 fallback
@@ -120,8 +122,9 @@ final class DuoPassthroughView: UIView {
     }
 }
 
-/// 输入 dock 浮层：宿主 view 底边约束到 keyboardLayoutGuide 顶——键盘
-/// 弹出时系统精确贴键盘顶，收起时贴屏幕底，dock 实例恒定、焦点稳定。
+/// 输入 dock 浮层：顶边固定贴下屏顶部（约屏幕中线），键盘在其下方
+/// 自适应弹出，dock 不随键盘移动；键盘异常高时由低优先级约束兜底
+/// 避让。dock 实例恒定、焦点稳定。
 @available(iOS 27.1, *)
 struct DuoKeyboardDock<Dock: View>: UIViewControllerRepresentable {
     let dock: Dock
@@ -144,10 +147,18 @@ struct DuoKeyboardDock<Dock: View>: UIViewControllerRepresentable {
         NSLayoutConstraint.activate([
             host.view.leadingAnchor.constraint(equalTo: vc.view.leadingAnchor),
             host.view.trailingAnchor.constraint(equalTo: vc.view.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: vc.view.keyboardLayoutGuide.topAnchor),
+            // 顶边固定在下屏顶部（中线 + 折叠带余量）：键盘在 dock 下方
+            // 弹出、高度自适应，dock 恒定不动（用户可感知的稳定锚点）。
+            host.view.topAnchor.constraint(equalTo: vc.view.centerYAnchor, constant: 12),
             // 上边界只设下限：dock 上方的弹出面板（指令列表）可向上生长。
             host.view.topAnchor.constraint(greaterThanOrEqualTo: vc.view.topAnchor),
         ])
+        // 键盘顶超过下屏剩余空间时的兜底：允许突破固定锚点往上让位，
+        // 用可破坏优先级避免与固定 top 约束冲突。
+        let avoidKeyboard = host.view.bottomAnchor.constraint(
+            lessThanOrEqualTo: vc.view.keyboardLayoutGuide.topAnchor)
+        avoidKeyboard.priority = .defaultHigh
+        avoidKeyboard.isActive = true
         host.didMove(toParent: vc)
         context.coordinator.host = host
         return vc
