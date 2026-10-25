@@ -103,7 +103,10 @@ struct ChatShellView: View {
             presentation: layout == .regularSplit ? .nativeSidebar : .drawer,
             configuration: .chat
         ) { _ in
+            // 侧栏头部（新会话/头像）不随键盘避让上移：键盘是 detail 列
+            // 输入框的事，侧栏顶上来只会挤走会话列表空间。
             ChatSidebarHeaderView()
+                .ignoresSafeArea(.keyboard)
         } sidebar: { safeAreaInsets in
             ChatSidebarView(
                 appState: appState,

@@ -56,6 +56,24 @@ struct ChatTimelineView: View {
             }
             .scrollPosition($position)
             .scrollDismissesKeyboard(.interactively)
+            // 键盘弹出时系统避让只压缩视口、滚动位置不动，最新消息会留在
+            // 视口外；跟底模式下补一次滚底让它跟随输入框上来。键盘 inset
+            // 不进 GeometryProxy.safeAreaInsets（实测），改监听视口高度骤减。
+            // 浏览历史（reading 模式）不强制打断。
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { oldHeight, newHeight in
+                if oldHeight - newHeight > 60, !navigationIsSuspended {
+                    // 键盘压缩视口时直接滚底：scrolling.requestBottom 的
+                    // 状态机（pendingBottomRequest 计算属性）在键盘布局
+                    // 动荡期因 viewport 样本失效而拒绝发令（实测 begin 拿
+                    // 不到请求），底层 scrollTo 不受影响，手势仍可打断。
+                    withAnimation(reduceMotion ? nil :
+                        .interactiveSpring(response: 0.28, dampingFraction: 1, blendDuration: 0.12)) {
+                        position.scrollTo(edge: .bottom)
+                    }
+                }
+            }
             // At regular widths the system inflates scroll content margins for
             // readability, making each message line noticeably shorter than
             // the composer below. Zero them: rows already carry their own
@@ -66,7 +84,9 @@ struct ChatTimelineView: View {
             .scrollEdgeEffectStyle(.soft, for: .top)
             .defaultScrollAnchor(.top, for: .initialOffset)
             .defaultScrollAnchor(.top, for: .alignment)
-            .defaultScrollAnchor(.top, for: .sizeChanges)
+            // 视口尺寸变化（键盘弹出/收起、分屏）锚定底部：最新消息跟随
+            // 输入框保持在可见区（锚 top 时底部消息会留在视口外）。
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
             .allowsHitTesting(model.isOpeningReady)
             .accessibilityHidden(!model.isOpeningReady)
             .onScrollPhaseChange { _, phase, context in
@@ -170,7 +190,8 @@ struct ChatTimelineView: View {
                 // Coalesce actual layout changes. Scrolling through the same
                 // layout cannot restart this animation on every offset callback.
                 do { try await Task.sleep(for: .milliseconds(24)) } catch { return }
-                guard !Task.isCancelled, !navigationIsSuspended, let command = scrolling.begin(request) else { return }
+                guard !Task.isCancelled, !navigationIsSuspended else { return }
+                guard let command = scrolling.begin(request) else { return }
                 scrollToBottom(command)
             }
             .task(id: UserScrollSettlement(needed: scrolling.needsUserScrollSettlement,
