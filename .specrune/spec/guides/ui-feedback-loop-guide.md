@@ -114,3 +114,11 @@
     铰链事件流不同步（显示 Expanded 实报 partiallyOpen 127.8°）、软键盘
     无法可靠拉起、headless 重启后帧缓冲不渲染需 GUI 解锁。凡模拟器验证
     失败或矛盾，先怀疑环境再怀疑代码；真机行为与模拟器冲突时，真机为准。
+
+15. **自绘手势/跟手动画之前，先找系统已有的交互**。2026-10-25 指令面板
+    跟手拖动抖动连败 5 轮（transformEffect/offset/材质遮罩/手势竞争全试）
+    后用户自己发现：timeline 已有的 `scrollDismissesKeyboard(.interactively)`
+    早就实现了"下拽消息流 → 键盘+输入框+面板跟手下去"，系统动画零抖动。
+    规则：要做一个手势效果前，先 grep 本仓库和想系统控件
+    （ScrollView dismiss、sheet 拖拽、keyboardLayoutGuide），系统有的
+    永远比自绘稳。
