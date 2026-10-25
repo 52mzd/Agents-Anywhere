@@ -73,7 +73,11 @@ struct SessionChatView: View, Equatable {
                             onShowAll: { expandedNoticeID = $0; sheet = .notices })
                             .traceChatLayout("interaction-dock")
                         ChatComposerDock(draft: session.composer, settings: model.settings,
-                            maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)), controls: controls,
+                            // Duo 半折叠聚焦时编辑器限单行（对齐系统短信：输入
+                            // 框不撑成多行大块、不视觉跨屏），文字多时内部滚动。
+                            maximumEditorHeight: isDuoFoldableIPhone ? 44
+                                : min(160, max(72, geometry.size.height * 0.30)),
+                            controls: controls,
                             canSend: session.canSend, canAttach: model.canAttach,
                             canSelectModel: session.runtime.allows("catalog.model"),
                             canSelectPermission: session.runtime.allows("catalog.permission"),

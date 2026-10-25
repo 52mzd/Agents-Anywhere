@@ -39,11 +39,11 @@ struct ChatComposerDock: View {
 
     private enum AttachmentPicker { case photos, files }
 
+    /// 浮层面板定位用的 dock 实际高度（不含面板）。
+    @State private var dockHeight: CGFloat = 0
+
     var body: some View {
         VStack(spacing: 0) {
-            if let sessionChat {
-                CommandSuggestionPanel(chat: sessionChat, draft: draft, forced: $showsCommandMenu)
-            }
             ChatComposer(draft: draft, editor: editor, isStreaming: isStreaming,
                 canSend: canSend, canStop: canStop, isBusy: isBusy || isSending || importCount > 0,
                 placeholder: placeholder,
@@ -53,6 +53,21 @@ struct ChatComposerDock: View {
                 showsCommands: sessionChat?.offersCommands == true, commandsActive: showsCommandMenu,
                 onCommands: { showsCommandMenu.toggle() },
                 onDraftChange: onDraftChange)
+        }
+        // 指令面板浮在 dock 上方（不占布局高度）：占位会把 safeAreaInset 的
+        // dock 撑高、压缩消息流视口——弹出即推动消息流，且面板高度参与
+        // 键盘跟随的对齐计算导致末条消息"不贴合"输入框。浮层只盖住消息
+        // 流底部，对齐参照恒为输入框顶。
+        .overlay(alignment: .bottom) {
+            if let sessionChat {
+                CommandSuggestionPanel(chat: sessionChat, draft: draft, forced: $showsCommandMenu)
+                    .offset(y: -dockHeight)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            dockHeight = height
         }
         .onChange(of: sessionChat?.optionsRequest) { _, _ in showsOptions = true }
         .frame(maxWidth: ChatControlMetrics.maximumContentWidth)

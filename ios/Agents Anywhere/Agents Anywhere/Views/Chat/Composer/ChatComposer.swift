@@ -28,7 +28,10 @@ struct ChatComposer: View {
         GlassEffectContainer(spacing: 12) {
             VStack(spacing: 0) {
                 if !draft.attachments.isEmpty { attachmentTray }
-                ComposerLayout(expanded: draft.isExpanded, maximumEditorHeight: maximumEditorHeight, controls: controls) {
+                // Duo 保持 collapsed 单行布局（按钮在编辑器两侧，对齐系统
+                // 短信形态）：expanded 的上下两层结构在半折叠下占双倍高度。
+                ComposerLayout(expanded: draft.isExpanded && !isDuoFoldableIPhone,
+                    maximumEditorHeight: maximumEditorHeight, controls: controls) {
                     Button(action: onOptions) {
                         AppSymbol("plus", size: 24)
                             .frame(width: controls.touchTarget, height: controls.touchTarget)
