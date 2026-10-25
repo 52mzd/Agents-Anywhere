@@ -51,45 +51,19 @@ struct SessionChatView: View, Equatable {
     }
     var body: some View {
         GeometryReader { geometry in
-            Group {
-                if hasStartedLoading {
-                    ChatTimelineView(model: model,
-                        onAttachment: openAttachment, onFile: openFile)
-                } else {
-                    Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+            let maxEditorHeight = min(160, max(72, geometry.size.height * 0.30))
+            // Duo 半折叠（笔记本姿态）：上区域=消息流、下区域=输入 dock；
+            // 键盘走系统默认。其余设备/姿态走原 safeAreaInset 单屏布局。
+            DuoArrangementGate.embedIfSupported(
+                primary: timelinePane,
+                secondary: bottomDock(maximumEditorHeight: maxEditorHeight)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+            ) {
+                timelinePane
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        bottomDock(maximumEditorHeight: maxEditorHeight)
+                    }
             }
-                .overlay {
-                    if model.isOpeningReady && model.timeline.rows.isEmpty && model.timeline.pendingMessages.isEmpty {
-                        VStack(spacing: 12) {
-                            Text(String(localized: "在这里继续你的任务")).foregroundStyle(.secondary)
-                        }.allowsHitTesting(false)
-                    }
-                }
-                .overlay { if !model.isOpeningReady { openingMask } }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    VStack(spacing: 0) {
-                        SessionInteractionDock(chat: model,
-                            onShowAll: { expandedNoticeID = $0; sheet = .notices })
-                            .traceChatLayout("interaction-dock")
-                        ChatComposerDock(draft: session.composer, settings: model.settings,
-                            maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)), controls: controls,
-                            canSend: session.canSend, canAttach: model.canAttach,
-                            canSelectModel: session.runtime.allows("catalog.model"),
-                            canSelectPermission: session.runtime.allows("catalog.permission"),
-                            isStreaming: model.isRunning, canStop: session.runtime.allows("session.interrupt"),
-                            isBusy: model.isWorking || !model.isOpeningReady, placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
-                            isLoadingSettings: model.isLoadingSettings,
-                            settingsError: model.settingsError, sessionChat: model,
-                            onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
-                            onApplySettings: model.applySettings, applyError: { model.settingsError },
-                            onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })
-                            .traceChatLayout("composer-dock")
-                    }
-                    .frame(maxWidth: ChatControlMetrics.maximumContentWidth).frame(maxWidth: .infinity)
-                    // Native safe-area layout owns both the visible scroll
-                    // region and the dock's space; do not add a second margin.
-                }
                 .overlay(alignment: .topLeading) {
                     VStack(alignment: .leading, spacing: 4) {
                         // Metadata can arrive after history. Transient controls
@@ -188,6 +162,50 @@ struct SessionChatView: View, Equatable {
         .onChange(of: model.openingError, initial: true) { _, message in
             toasts.update(source: "opening", failure: message.map { V2ClientFailure(kind: .unavailable, message: $0) })
         }
+    }
+
+    /// 消息流区域（双屏 primary 与单屏 fallback 共用）。
+    private var timelinePane: some View {
+        Group {
+            if hasStartedLoading {
+                ChatTimelineView(model: model,
+                    onAttachment: openAttachment, onFile: openFile)
+            } else {
+                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .overlay {
+            if model.isOpeningReady && model.timeline.rows.isEmpty && model.timeline.pendingMessages.isEmpty {
+                VStack(spacing: 12) {
+                    Text(String(localized: "在这里继续你的任务")).foregroundStyle(.secondary)
+                }.allowsHitTesting(false)
+            }
+        }
+        .overlay { if !model.isOpeningReady { openingMask } }
+    }
+
+    /// 底部输入区域（双屏 secondary）。Native safe-area layout owns both
+    /// the visible scroll region and the dock's space; do not add a second margin.
+    private func bottomDock(maximumEditorHeight: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            SessionInteractionDock(chat: model,
+                onShowAll: { expandedNoticeID = $0; sheet = .notices })
+                .traceChatLayout("interaction-dock")
+            ChatComposerDock(draft: session.composer, settings: model.settings,
+                maximumEditorHeight: maximumEditorHeight, controls: controls,
+                canSend: session.canSend, canAttach: model.canAttach,
+                canSelectModel: session.runtime.allows("catalog.model"),
+                canSelectPermission: session.runtime.allows("catalog.permission"),
+                isStreaming: model.isRunning, canStop: session.runtime.allows("session.interrupt"),
+                isBusy: model.isWorking || !model.isOpeningReady, placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
+                isLoadingSettings: model.isLoadingSettings,
+                settingsError: model.settingsError, sessionChat: model,
+                onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
+                onApplySettings: model.applySettings, applyError: { model.settingsError },
+                onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })
+                .traceChatLayout("composer-dock")
+        }
+        .frame(maxWidth: ChatControlMetrics.maximumContentWidth).frame(maxWidth: .infinity)
     }
 
     private var openingMask: some View {
