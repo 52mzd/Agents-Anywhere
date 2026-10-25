@@ -1,0 +1,40 @@
+# Machine-local and personal state. Not for sharing.
+
+# Per-developer identity — read from the main checkout in linked worktrees.
+.developer
+
+# Current-task pointer (each developer works on a different task).
+.current-task
+
+# Session-/window-scoped runtime state.
+.runtime/
+
+# Loop state file.
+.ralph-state.json
+
+# Agent runtime files.
+.agents/
+.agent-log
+.session-id
+
+# Task directory runtime files.
+.plan-log
+
+# Atomic-write temp files.
+*.tmp
+
+# Update backup directories.
+.backup-*
+
+# Conflict-resolution temp files.
+*.new
+
+# SpecRune observation data (injection snapshots). Discardable:
+# deleting this directory loses history, never state.
+.state/
+
+# Legacy workspace indexes (per-developer and the workspace overview). No longer
+# generated (逐会话记录取代了它们，见 req:sessions-memory#record-no-index-file)；gitignore 不会解除已跟踪
+# 文件的跟踪，旧仓库由 migrateLegacyWorkspaceIndex 做一次 git rm --cached。
+workspace/index.md
+workspace/*/index.md

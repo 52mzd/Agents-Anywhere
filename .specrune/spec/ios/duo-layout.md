@@ -164,3 +164,15 @@ xcrun devicectl device process launch --device <UDID> com.dae.sr1023
   0 会让 `&&` 链继续装旧产物（本轮实测踩坑）。
 - 真机锁屏时 `devicectl launch` 报 `BSErrorCodeDescription = Locked`，
   解锁后手动打开或重试。
+
+## 键盘跟随（2026-10-25 真机验收）
+
+半折叠/展开下点输入框，消息流要滚到最新：
+- 视口高度骤减（onGeometryChange，键盘 inset 不进 GeometryProxy.safeAreaInsets）
+  直接 `position.scrollTo(edge: .bottom)`——**不要**走 scrolling.requestBottom
+  状态机：pendingBottomRequest 计算属性在键盘布局动荡期因 viewport 样本
+  失效返回 nil（begin 拿不到请求，日志实证）。
+- 侧栏/非输入列控件用 `.ignoresSafeArea(.keyboard)` 固定。
+- updateUIView 内**禁止同步** becomeFirstResponder（聚焦触发布局变化时
+  与键盘 reload 同步重入，主线程假死；异步派发即可）。
+- 根本心法：系统键盘避让本身就是"内容上推"设计，不要自建容器对抗。
