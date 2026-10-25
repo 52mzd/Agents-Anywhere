@@ -8,6 +8,10 @@ struct CommandSuggestionPanel: View {
     @Bindable var draft: ComposerDraft
     @Binding var forced: Bool
     @State private var dismissedFor: String?
+    /// 标题行拖拽跟手位移：松手超过阈值 = 收起键盘（等价收起按钮）。
+    /// 手势必须用全局坐标系——默认 .local 随视图自身位移抖动 translation，
+    /// 是上一轮跟手实现上下震荡的根底。
+    @State private var headerDragOffset: CGFloat = 0
 
     private var slashQuery: String? {
         guard let intent = SlashIntent(draft.text), intent.isCommandLike, intent.suffix.isEmpty, !intent.multiline else { return nil }
@@ -37,11 +41,32 @@ struct CommandSuggestionPanel: View {
                     .accessibilityLabel(String(localized: "关闭"))
                 }
                 .padding(.leading, 16).padding(.trailing, 4)
+                .gesture(DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                    .onChanged { value in
+                        headerDragOffset = max(0, value.translation.height)
+                    }
+                    .onEnded { value in
+                        let commit = value.translation.height > 80
+                            || value.predictedEndTranslation.height > 130
+                        if commit {
+                            // 瞬时归零，位移交给键盘收起的一次布局动画；
+                            // 与 offset 回位动画叠加会互相拉扯。
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { headerDragOffset = 0 }
+                            draft.isFocused = false
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                headerDragOffset = 0
+                            }
+                        }
+                    })
                 content
             }
             .padding(.bottom, 8)
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
             .padding(.horizontal, draft.isExpanded ? ChatControlMetrics.expandedHorizontalInset : ChatControlMetrics.collapsedHorizontalInset)
+            .transformEffect(CGAffineTransform(translationX: 0, y: headerDragOffset))
             .transition(.opacity)
             .task(id: chat.canUseCommands) { await chat.loadCommands() }
         }
