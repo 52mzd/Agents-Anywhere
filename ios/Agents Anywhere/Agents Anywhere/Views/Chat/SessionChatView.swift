@@ -195,6 +195,7 @@ struct SessionChatView: View, Equatable {
             placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
             isLoadingSettings: model.isLoadingSettings,
             settingsError: model.settingsError, sessionChat: model,
+            availableHeight: geometry.size.height,
             onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
             onApplySettings: model.applySettings, applyError: { model.settingsError },
             onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })

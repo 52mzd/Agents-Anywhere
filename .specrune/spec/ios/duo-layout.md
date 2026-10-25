@@ -67,6 +67,15 @@ let isDuoFoldableIPhone: Bool = {
   宽度问题的正解是找到并修改约束本身，不是在其外围补偿。
 - **双产物目录**：`Debug-iphonesimulator` 与 `Debug-iphoneos` 独立；
   只为真机构建的改动在模拟器上不存在。换环境复现前先确认构建产物。
+- **用 `verticalSizeClass == .compact` 判断"横屏矮空间"**：Duo 横屏展开
+  高 669pt 是 regular（同 iPad），判断永不成立——浮层面板照常 240 高、
+  顶部顶进消息流标题栏玻璃下（2026-10-26 真机翻车一轮）。尺寸类看不见
+  "键盘要吃掉大半高度"这件事；矮空间判断用实测几何：面板高度 =
+  `min(240, 可视高度 − dock 实测高度 − 60)`（SessionChatView 传
+  `geometry.size.height`，dock 用 onGeometryChange 采自身高度）。
+- **SwiftUI 手势只在不透明内容上命中**：HStack 中间的 `Spacer` 空白区
+  不参与 DragGesture 命中，手势会缩到角落文字处。挂手势前补
+  `.contentShape(Rectangle())`（指令面板标题行整行可拖，2026-10-26）。
 
 ## 双栏侧栏顶部偏移
 
