@@ -94,10 +94,19 @@ struct NativeComposerEditor: UIViewRepresentable {
             let end = (draft.text as NSString).length
             view.selectedRange = NSRange(location: min(selection.location, end), length: 0)
         }
-        if draft.isFocused, !view.isFirstResponder {
-            view.becomeFirstResponder()
-        } else if !draft.isFocused, view.isFirstResponder {
-            view.resignFirstResponder()
+        // 焦点变更必须异步：updateUIView 里同步 becomeFirstResponder 会在
+        // 聚焦触发布局变化（Duo 双屏紧凑模式）时与键盘 reload 形成同步
+        // 重入死循环（updateUIView → becomeFirstResponder → 布局更新 →
+        // updateUIView...，主线程假死）。异步后 isFirstResponder 判断在
+        // 下一 runloop 已稳定，循环被打断。
+        let shouldFocus = draft.isFocused, isFirstResponder = view.isFirstResponder
+        DispatchQueue.main.async {
+            guard view.window != nil else { return }
+            if shouldFocus, !view.isFirstResponder {
+                view.becomeFirstResponder()
+            } else if !shouldFocus, view.isFirstResponder {
+                view.resignFirstResponder()
+            }
         }
     }
 
