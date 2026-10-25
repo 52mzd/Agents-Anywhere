@@ -73,7 +73,15 @@ struct CommandSuggestionPanel: View {
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
                     withTransaction(transaction) { headerDragOffset = 0 }
-                    draft.isFocused = false
+                    // 键盘开着：下拖收键盘、面板保留；键盘没开
+                    // （⌘ 强制展开）：没键盘可收，下拖就是关面板。
+                    if draft.isFocused {
+                        draft.isFocused = false
+                    } else if forced {
+                        forced = false
+                    } else {
+                        dismissedFor = draft.text
+                    }
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         headerDragOffset = 0
