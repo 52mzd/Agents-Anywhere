@@ -17,3 +17,9 @@
 - 改宽度前先读 duo-layout.md 的"三层宽度约束"清单。
 - 动 Textual 前先读 textual-vendor.md——本地是 vendor 定制版，
   升级须手动合并并保留性能定制。
+- 改 `SessionChatView` 这类大体量 SwiftUI body 前注意：body 表达式再加
+  任何内容就可能触发 "unable to type-check in reasonable time"。对策是把
+  子树/修饰链提取为私有方法或 ViewModifier（现有 timelinePane/bottomDock/
+  applyBehaviors 即为此拆分），不要往 body 里内联新表达式。
+- Duo/折叠屏相关改动先读 duo-layout.md（机型判断、双屏契约、
+  arrangement Swift 化名、真机部署命令）。

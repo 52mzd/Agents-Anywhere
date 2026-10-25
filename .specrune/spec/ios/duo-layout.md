@@ -127,3 +127,40 @@ let line = (CTFrameGetLines(frame) as! [CTLine])[0]
   hosting 必须 `[.intrinsicContentSize]`（否则指令面板被裁）。
 - 视图实例稳定 > 一切：pane↔浮层切换会重建 SwiftUI 实例、丢输入焦点。
 - 外层 `.ignoresSafeArea(.keyboard)` 必须加（否则键盘压缩容器重排 pane）。
+
+## iOS 27.1 arrangement API 的 Swift 调用形态（2026-10-25 SDK 实证）
+
+SwiftUI **无**任何 arrangement/hinge 公开符号（swiftinterface 0 匹配；外部
+文章声称的 `ArrangementView` 系 AI 写作失实）。全部走 UIKit，Swift 化名与
+ObjC 头文件差异如下（`@available(iOS 27.1, *)`）：
+
+```swift
+let vc = UIArrangementViewController()
+vc.setViewController(host, for: .primary)      // NS_REFINED_FOR_SWIFT: forPlacement → for
+vc.updateArrangement(.split)                    // UISplitArrangement.split 静态成员
+// ❌ splitArrangement() 不存在（头文件 +splitArrangement 的 Swift 化）
+// ❌ UISplitArrangement.ViewProperties() 无公开 init：
+// ✅ var props = split.defaultViewProperties   // 拷贝默认值再改
+```
+
+`UIHostingController.sizingOptions` 赋值不能在 `[a, b]` 数组循环里做——
+数组把类型擦成 `UIViewController`，编译报"no member"，必须逐个写。
+
+## 真机构建/部署工作流（2026-10-25）
+
+```bash
+# Xcode 开着会锁 build.db，用独立 derivedDataPath：
+xcodebuild -project "Agents Anywhere.xcodeproj" -scheme "Agents Anywhere" \
+  -destination 'id=<UDID>' -allowProvisioningUpdates \
+  -derivedDataPath /tmp/duo_dd_dev build
+xcrun devicectl device install app --device <UDID> \
+  "/tmp/duo_dd_dev/Build/Products/Debug-iphoneos/Agents Anywhere.app"
+xcrun devicectl device process launch --device <UDID> com.dae.sr1023
+```
+
+- **bundle id 两套**：真机构建 `com.dae.sr1023`（签名配置），模拟器构建
+  `com.agentsanywhere.app`——launch 时用错会 NotFound。
+- 构建脚本必须以 `BUILD SUCCEEDED` 判定后再 install；grep 到 error 行返回
+  0 会让 `&&` 链继续装旧产物（本轮实测踩坑）。
+- 真机锁屏时 `devicectl launch` 报 `BSErrorCodeDescription = Locked`，
+  解锁后手动打开或重试。
