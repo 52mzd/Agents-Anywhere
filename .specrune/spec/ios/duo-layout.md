@@ -73,6 +73,10 @@ let isDuoFoldableIPhone: Bool = {
   "键盘要吃掉大半高度"这件事；矮空间判断用实测几何：面板高度 =
   `min(240, 可视高度 − dock 实测高度 − 60)`（SessionChatView 传
   `geometry.size.height`，dock 用 onGeometryChange 采自身高度）。
+- **水平方向 size class 同样不可靠**：Duo 半折叠下屏的
+  `horizontalSizeClass` 实测也不是 compact（2026-10-26 真机验证失败）。
+  需要按形态分派行为时，优先找已有状态语义（如"键盘是否展开"）而不是
+  给屏幕形态分类；实在要分形态就用实测宽度/高度阈值。
 - **SwiftUI 手势只在不透明内容上命中**：HStack 中间的 `Spacer` 空白区
   不参与 DragGesture 命中，手势会缩到角落文字处。挂手势前补
   `.contentShape(Rectangle())`（指令面板标题行整行可拖，2026-10-26）。
