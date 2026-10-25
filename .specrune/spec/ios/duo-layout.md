@@ -120,19 +120,13 @@ let line = (CTFrameGetLines(frame) as! [CTLine])[0]
 
 - 布局：`DuoArrangementHost`（UIKit 桥）+ `.split` 最简配置；**不要**给
   arrangement 加 axes/viewProperties（真机实测 primary 会被挤成窄条）。
-- 输入 dock 永远做浮层，顶边固定贴下屏顶部（`centerYAnchor + 12`，
-  键盘在 dock 下方自适应弹出、互不推动；键盘过高时 defaultHigh 优先级
-  约束兜底让位），**不要**放进 pane
+- 输入 dock 永远做浮层 + `keyboardLayoutGuide` 锚定，**不要**放进 pane
   （pane 布局被 arrangement 截断，键盘下 dock 跳位）；
   **不要**用 keyboard frame 通知算抬升量（lift 实测波动 395↔495）。
 - dock 浮层容器必须 `hitTest` 穿透（否则消息流无法滑动）；
   hosting 必须 `[.intrinsicContentSize]`（否则指令面板被裁）。
 - 视图实例稳定 > 一切：pane↔浮层切换会重建 SwiftUI 实例、丢输入焦点。
-- 外层 `.ignoresSafeArea(.keyboard)` 必须加（否则键盘压缩容器重排 pane），
-  且 dock 浮层的 `.overlay` 必须在 ignoresSafeArea **内侧**（挂外面时浮层
-  容器仍被键盘 safe area 压缩、centerY 上移，dock 被推上去——真机实测）。
-- 键盘高度 App 无法控制（iOS 27.1 SDK 无键盘尺寸 API）；要小键盘只能靠
-  输入法自身设置/第三方输入法，布局按"任意高度不遮挡 dock"设计。
+- 外层 `.ignoresSafeArea(.keyboard)` 必须加（否则键盘压缩容器重排 pane）。
 
 ## iOS 27.1 arrangement API 的 Swift 调用形态（2026-10-25 SDK 实证）
 
