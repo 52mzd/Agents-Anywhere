@@ -79,6 +79,23 @@ struct ChatComposer: View {
                         .accessibilityAddTraits(commandsActive ? .isSelected : [])
                         .accessibilityIdentifier("chat.composer.commands")
                     }
+                    // 聚焦时显示收起键盘：放在指令图标左侧（紧邻发送键易误触）。
+                    // systemName 在本项目环境不渲染（全仓无先例），用 AppSymbol 资产。
+                    if draft.isFocused {
+                        Button {
+                            draft.isFocused = false
+                        } label: {
+                            // systemName 在本项目环境不渲染（全仓无先例，
+                            // 两轮实测空白），统一用 AppSymbol 资产图标。
+                            AppSymbol("chevron.down", size: 15)
+                                .foregroundStyle(.secondary)
+                                .frame(width: controls.touchTarget, height: controls.touchTarget)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "收起键盘"))
+                        .accessibilityIdentifier("chat.composer.dismissKeyboard")
+                    }
                 }
             }
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: draft.isExpanded ? controls.expandedCornerRadius : controls.collapsedCornerRadius))

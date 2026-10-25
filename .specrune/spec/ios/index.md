@@ -23,3 +23,5 @@
   applyBehaviors 即为此拆分），不要往 body 里内联新表达式。
 - Duo/折叠屏相关改动先读 duo-layout.md（机型判断、双屏契约、
   arrangement Swift 化名、真机部署命令）。
+- 图标一律用 `AppSymbol`（资产映射）：本项目环境 `Image(systemName:)`
+  完全不渲染（2026-10-26 两轮实测空白，全仓无先例）。
