@@ -25,3 +25,5 @@
   arrangement Swift 化名、真机部署命令）。
 - 图标一律用 `AppSymbol`（资产映射）：本项目环境 `Image(systemName:)`
   完全不渲染（2026-10-26 两轮实测空白，全仓无先例）。
+- 改输入行（加/挪按钮）先读 duo-layout.md 的"ComposerLayout 多按钮
+  排布契约"——声明顺序即视觉顺序，宽度公式自动适配。

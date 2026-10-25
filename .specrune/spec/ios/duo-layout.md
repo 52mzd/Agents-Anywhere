@@ -176,3 +176,26 @@ xcrun devicectl device process launch --device <UDID> com.dae.sr1023
 - updateUIView 内**禁止同步** becomeFirstResponder（聚焦触发布局变化时
   与键盘 reload 同步重入，主线程假死；异步派发即可）。
 - 根本心法：系统键盘避让本身就是"内容上推"设计，不要自建容器对抗。
+
+
+## 输入行（ComposerLayout）多按钮排布契约（2026-10-26）
+
+`Composer/ComposerLayout.swift` 是自定义 Layout，子视图按**声明顺序**定位：
+
+| 索引 | 内容 | 位置 | 条件 |
+|---|---|---|---|
+| 0 | +（附件/选项） | 左缘 | 恒定 |
+| 1 | 编辑器 | 中间 | 恒定 |
+| 2 | 发送/停止 | 右缘 | 恒定 |
+| 3 | 指令 ⌘ | 发送左一格 | `showsCommands` |
+| 4 | 收起键盘 ⌄ | 指令左一格 | `draft.isFocused` |
+
+- **声明顺序即视觉顺序**：往输入行加按钮时，在 ChatComposer 闭包里
+  按目标位置声明；紧邻发送键的位置留给高频主操作（误触考量，
+  2026-10-26 收起键曾放发送旁被用户要求挪到指令左侧）。
+- `editorWidth` 的 `extra = (count-3) × touchTarget`：新增条件按钮
+  自动收窄编辑器，无需逐处改宽度。
+- 条件按钮组合（3/4/5 个子视图）由 count 判断放置，无法感知身份——
+  无指令的 runtime 下收起键会落在发送旁（已知边缘，暂不修）。
+- ChatComposerDock 的指令面板是**浮层**（overlay + dockHeight 偏移），
+  不占布局流；新增弹出类 UI 照此模式（见 guides 铁律 16）。
