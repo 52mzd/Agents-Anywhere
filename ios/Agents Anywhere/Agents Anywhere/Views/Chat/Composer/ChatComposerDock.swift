@@ -36,6 +36,9 @@ struct ChatComposerDock: View {
     @State private var isSending = false
     @State private var importCount = 0
     @State private var showsCommandMenu = false
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// 横屏时承载全屏指令列表（与 showsCommandMenu 桥接）。
+    @State private var showsFullscreenCommands = false
 
     private enum AttachmentPicker { case photos, files }
 
@@ -58,11 +61,32 @@ struct ChatComposerDock: View {
         // dock 撑高、压缩消息流视口——弹出即推动消息流，且面板高度参与
         // 键盘跟随的对齐计算导致末条消息"不贴合"输入框。浮层只盖住消息
         // 流底部，对齐参照恒为输入框顶。
+        // 横屏（竖直空间 compact）键盘吃掉大半高度，浮层放不下整块面板，
+        // 改由 fullScreenCover 承载全屏指令列表。
         .overlay(alignment: .bottom) {
-            if let sessionChat {
+            if let sessionChat, verticalSizeClass != .compact {
                 CommandSuggestionPanel(chat: sessionChat, draft: draft, forced: $showsCommandMenu)
                     .offset(y: -dockHeight)
             }
+        }
+        .fullScreenCover(isPresented: $showsFullscreenCommands) {
+            if let sessionChat {
+                CommandSuggestionPanel(chat: sessionChat, draft: draft, forced: $showsCommandMenu,
+                    fullscreen: true)
+            }
+        }
+        // ⌘ 按钮与面板内的选择/关闭都写 forced（showsCommandMenu），
+        // 横屏下经此桥接开关全屏列表，两条路径共用一个状态源。
+        .onChange(of: showsCommandMenu) { _, on in
+            if verticalSizeClass == .compact, on != showsFullscreenCommands {
+                // 全屏列表出现时焦点若还在编辑框，键盘会浮在 cover 之上
+                // 盖住列表底部（fullScreenCover 不接键盘避让），先收掉。
+                if on { draft.isFocused = false }
+                showsFullscreenCommands = on
+            }
+        }
+        .onChange(of: showsFullscreenCommands) { _, on in
+            if !on, showsCommandMenu { showsCommandMenu = false }
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height

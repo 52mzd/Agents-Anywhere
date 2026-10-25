@@ -72,22 +72,7 @@ struct SessionChatView: View, Equatable {
                         SessionInteractionDock(chat: model,
                             onShowAll: { expandedNoticeID = $0; sheet = .notices })
                             .traceChatLayout("interaction-dock")
-                        ChatComposerDock(draft: session.composer, settings: model.settings,
-                            // Duo 半折叠聚焦时编辑器限单行（对齐系统短信：输入
-                            // 框不撑成多行大块、不视觉跨屏），文字多时内部滚动。
-                            maximumEditorHeight: isDuoFoldableIPhone ? 44
-                                : min(160, max(72, geometry.size.height * 0.30)),
-                            controls: controls,
-                            canSend: session.canSend, canAttach: model.canAttach,
-                            canSelectModel: session.runtime.allows("catalog.model"),
-                            canSelectPermission: session.runtime.allows("catalog.permission"),
-                            isStreaming: model.isRunning, canStop: session.runtime.allows("session.interrupt"),
-                            isBusy: model.isWorking || !model.isOpeningReady, placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
-                            isLoadingSettings: model.isLoadingSettings,
-                            settingsError: model.settingsError, sessionChat: model,
-                            onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
-                            onApplySettings: model.applySettings, applyError: { model.settingsError },
-                            onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })
+                        composerDock(geometry: geometry)
                             .traceChatLayout("composer-dock")
                     }
                     .frame(maxWidth: ChatControlMetrics.maximumContentWidth).frame(maxWidth: .infinity)
@@ -192,6 +177,27 @@ struct SessionChatView: View, Equatable {
         .onChange(of: model.openingError, initial: true) { _, message in
             toasts.update(source: "opening", failure: message.map { V2ClientFailure(kind: .unavailable, message: $0) })
         }
+    }
+
+    /// Body 内联这一长串参数会让 Swift 类型检查超时（实测），拆方法。
+    private func composerDock(geometry: GeometryProxy) -> ChatComposerDock {
+        ChatComposerDock(draft: session.composer, settings: model.settings,
+            // Duo 半折叠聚焦时编辑器限单行（对齐系统短信：输入框不撑成
+            // 多行大块、不视觉跨屏），文字多时内部滚动。
+            maximumEditorHeight: isDuoFoldableIPhone ? 44
+                : min(160, max(72, geometry.size.height * 0.30)),
+            controls: controls,
+            canSend: session.canSend, canAttach: model.canAttach,
+            canSelectModel: session.runtime.allows("catalog.model"),
+            canSelectPermission: session.runtime.allows("catalog.permission"),
+            isStreaming: model.isRunning, canStop: session.runtime.allows("session.interrupt"),
+            isBusy: model.isWorking || !model.isOpeningReady,
+            placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
+            isLoadingSettings: model.isLoadingSettings,
+            settingsError: model.settingsError, sessionChat: model,
+            onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
+            onApplySettings: model.applySettings, applyError: { model.settingsError },
+            onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })
     }
 
     private var openingMask: some View {
