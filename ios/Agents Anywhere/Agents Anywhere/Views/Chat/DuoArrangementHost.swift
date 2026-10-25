@@ -49,7 +49,7 @@ struct DuoArrangementHost<Primary: View, Secondary: View>: UIViewControllerRepre
 }
 
 /// 双屏分支入口：机型 + 半折叠姿态 + iOS 27.1 三重门控。
-/// 键盘一律走系统默认行为，本层不做任何避让改写。
+/// 双屏时输入 dock 走浮层 + keyboardLayoutGuide 锚定（见 Branch 注释）。
 enum DuoArrangementGate {
     @ViewBuilder
     static func embedIfSupported<Primary: View, Secondary: View, Fallback: View>(

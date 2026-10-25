@@ -21,11 +21,23 @@ let isDuoFoldableIPhone: Bool = {
 - **真机**读 `utsname().machine`；**模拟器**必须走
   `SIMULATOR_MODEL_IDENTIFIER`——模拟器的 machine 只返回宿主架构
   （arm64），机型判断永远 false，Duo 模拟器将无法复现折叠屏分支。
-- iOS 27.1 SDK **没有**任何折叠姿态/形态公开 API（UIKit 头文件已验证，
-  2026-10 归档任务 `10-23-duo-laptop-posture` 的 R0 探测结论相同）。
-  机型 id 是唯一可靠信号；上游 "never a device model" 规则在"折叠外屏
-  与直板机 trait 完全等价"的场景下无法表达，属正当破例（使用处注释
-  需说明）。
+- ~~iOS 27.1 SDK 没有任何折叠姿态/形态公开 API~~（2026-10-25 修正：
+  Xcode 27.1 (27A9275) SDK 实证，**UIKit 公开了完整的折叠 API**，此前
+  "没有任何公开 API"的结论只对 SwiftUI 成立）。可用符号（头文件已验证，
+  均 iOS 27.1+）：
+  - `UIArrangementViewController`（`setViewController(_:for:)` /
+    `updateArrangement(_:)`，primary/secondary 两个 placement）
+  - `UISplitArrangement`（竖屏高>宽自动上下堆叠）/ `UIOverlayArrangement`
+  - `UIHinge`（closed/partiallyOpen/fullyOpen + angle）、
+    `UIHingeInteraction`（这就是"折叠姿态 API"）
+  - `UIViewReservedRegion`（division=折叠带 / occlusion=摄像头遮挡，
+    带 `isActive`，须现查不能缓存）
+  - **SwiftUI 无对应符号**（swiftinterface 0 匹配；外部文章声称的
+    SwiftUI `ArrangementView` 系 AI 辅助写作失实）。SwiftUI 接入用
+    UIViewControllerRepresentable 包装，见
+    `Views/Chat/DuoArrangementHost.swift`。
+  机型 id 判断仍保留：它回答"这台设备是不是折叠屏"（布局分支启用条件），
+  arrangement/hinge API 回答"屏幕当前怎么折"——两者职责不同，都要用。
 - 新折叠机型落地时**只改这一个常量判断**，布局分支不动。
 
 ## 三层宽度约束（宽屏聊天内容）
@@ -103,3 +115,15 @@ let line = (CTFrameGetLines(frame) as! [CTLine])[0]
 
 3. 块提案宽度用临时布局日志拿（`MarkdownBlockLayout.sizeThatFits`
    打 proposal），日志代码带 `AA-DIAG:` 标记，完事 grep 清理。
+
+## 双屏（半折叠）契约（2026-10-25 任务 10-25-ios-duo-dual-screen）
+
+- 布局：`DuoArrangementHost`（UIKit 桥）+ `.split` 最简配置；**不要**给
+  arrangement 加 axes/viewProperties（真机实测 primary 会被挤成窄条）。
+- 输入 dock 永远做浮层 + `keyboardLayoutGuide` 锚定，**不要**放进 pane
+  （pane 布局被 arrangement 截断，键盘下 dock 跳位）；
+  **不要**用 keyboard frame 通知算抬升量（lift 实测波动 395↔495）。
+- dock 浮层容器必须 `hitTest` 穿透（否则消息流无法滑动）；
+  hosting 必须 `[.intrinsicContentSize]`（否则指令面板被裁）。
+- 视图实例稳定 > 一切：pane↔浮层切换会重建 SwiftUI 实例、丢输入焦点。
+- 外层 `.ignoresSafeArea(.keyboard)` 必须加（否则键盘压缩容器重排 pane）。

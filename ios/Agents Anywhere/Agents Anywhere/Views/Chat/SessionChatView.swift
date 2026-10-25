@@ -52,8 +52,9 @@ struct SessionChatView: View, Equatable {
     var body: some View {
         GeometryReader { geometry in
             let maxEditorHeight = min(160, max(72, geometry.size.height * 0.30))
-            // Duo 半折叠（笔记本姿态）：上区域=消息流、下区域=输入 dock；
-            // 键盘走系统默认。其余设备/姿态走原 safeAreaInset 单屏布局。
+            // Duo 半折叠（笔记本姿态）：上区域=消息流、下区域=输入 dock
+            // （键盘行为见 DuoArrangementHost）。其余设备/姿态走原
+            // safeAreaInset 单屏布局。
             DuoArrangementGate.embedIfSupported(
                 primary: timelinePane,
                 secondary: bottomDock(maximumEditorHeight: maxEditorHeight)
