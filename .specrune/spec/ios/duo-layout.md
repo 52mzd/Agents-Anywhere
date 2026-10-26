@@ -77,6 +77,11 @@ let isDuoFoldableIPhone: Bool = {
   `horizontalSizeClass` 实测也不是 compact（2026-10-26 真机验证失败）。
   需要按形态分派行为时，优先找已有状态语义（如"键盘是否展开"）而不是
   给屏幕形态分类；实在要分形态就用实测宽度/高度阈值。
+  例外：`ChatShellView` 用 `horizontalSizeClass` 选 sidebar 布局是正当的
+  ——它对齐的是 `NavigationSplitView` 自身的系统 trait（系统组件拿什么
+  分派，我们就拿什么分派），不是猜测真实几何；上面同一会话还踩过
+  `verticalSizeClass` 的同型坑（见上一条），教训是"size class ≠ 真实
+  几何"，不是"size class 处处禁用"。
 - **SwiftUI 手势只在不透明内容上命中**：HStack 中间的 `Spacer` 空白区
   不参与 DragGesture 命中，手势会缩到角落文字处。挂手势前补
   `.contentShape(Rectangle())`（指令面板标题行整行可拖，2026-10-26）。
