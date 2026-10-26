@@ -71,16 +71,21 @@ struct NewSessionView: View, Equatable {
                 }
                 .frame(maxWidth: ChatControlMetrics.maximumContentWidth).frame(maxWidth: .infinity)
             }
-        }
-        .modifier(ChatPageToolbar(title: "", onMenu: onMenu))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showsFiles = true } label: { AppSymbol("folder") }
-                    .disabled(!canBrowse)
-                    .accessibilityLabel(String(localized: "浏览文件"))
-                    .accessibilityIdentifier("chat.new.files")
+            // "…"图标无条件恒定：ellipsis↔spinner 切换在 Duo 横屏宽 detail
+            // 下触发系统 glass 重排，spinner 错位放大成大圆闪现（真机定位，
+            // 2026-10-27；宽度条件判断两版均有漏网帧，放弃条件化）。
+            // isPreparing 反馈统一放导航栏 status 槽（原位 mini 转圈）。
+            .modifier(ChatPageToolbar(title: "",
+                status: model.isPreparing ? .preparing : nil, onMenu: onMenu))
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showsFiles = true } label: { AppSymbol("folder") }
+                        .disabled(!canBrowse)
+                        .accessibilityLabel(String(localized: "浏览文件"))
+                        .accessibilityIdentifier("chat.new.files")
+                }
+                ToolbarItem(placement: .topBarTrailing) { deviceMenu }
             }
-            ToolbarItem(placement: .topBarTrailing) { deviceMenu }
         }
         .sheet(isPresented: $showsTarget) {
             SessionTargetSheet(model: model)
@@ -157,7 +162,11 @@ struct NewSessionView: View, Equatable {
                 Button(String(localized: "Copy device ID"), systemImage: "doc.on.doc") { UIPasteboard.general.string = device.id }
             }
         } label: {
-            if model.isPreparing { ProgressView().controlSize(.mini) } else { AppSymbol("ellipsis") }
+            // 图标无条件恒定：ellipsis↔spinner 切换触发系统 glass 容器
+            // 重排，spinner 在 Duo 横屏宽 detail 下错位放大成"大圆圈闪现"
+            //（真机定位，2026-10-27）。isPreparing 转圈由导航栏 status 槽
+            // 承担（见 body 内 ChatPageToolbar）。
+            AppSymbol("ellipsis")
         }
         .disabled(model.isCreating)
         .accessibilityLabel(String(localized: "Device actions"))

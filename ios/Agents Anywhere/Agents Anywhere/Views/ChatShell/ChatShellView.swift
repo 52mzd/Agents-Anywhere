@@ -8,6 +8,10 @@ struct ChatShellView: View {
 
     @State private var sidebar = ChatSidebarState()
     @State private var newSessionPresentationID = UUID()
+    /// 会话页/新会话页 composer 玻璃共享的 namespace：detail 切换时同 ID
+    /// glass 做 matched 过渡，避免新页 glass 单独"泡泡式"出现（Duo 横屏
+    /// 宽 detail 下肉眼可见的大圆闪现）。
+    @Namespace private var composerGlass
     private var selection: ChatShellSelection {
         get { appState.chatSelection }
         nonmutating set { appState.chatSelection = newValue }
@@ -142,6 +146,7 @@ struct ChatShellView: View {
         } content: { safeAreaInsets in
             mainContent
                 .modifier(ChatDetailNavigation(insets: safeAreaInsets))
+                .environment(\.composerGlassNamespace, composerGlass)
         }
     }
 

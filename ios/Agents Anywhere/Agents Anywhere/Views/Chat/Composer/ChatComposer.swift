@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// 跨页共享 composer 玻璃的 namespace：detail 切换（会话→新会话）时两页
+/// composer 若各自持有 namespace，新页 glass "从无到有"的 Liquid Glass
+/// 出现动画在 Duo 横屏宽 detail 下闪现大圆泡泡（2026-10-27 真机定位，
+/// 圈出现在底部输入区；竖屏 NavigationStack 有 push 过渡掩盖、15PM
+/// 横屏 detail 窄泡泡不明显）。共享后同 ID glass 做 matched 过渡。
+private struct ComposerGlassNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+extension EnvironmentValues {
+    var composerGlassNamespace: Namespace.ID? {
+        get { self[ComposerGlassNamespaceKey.self] }
+        set { self[ComposerGlassNamespaceKey.self] = newValue }
+    }
+}
+
 struct ChatComposer: View {
     @Bindable var draft: ComposerDraft
     let editor: ComposerEditorController
@@ -22,6 +37,7 @@ struct ChatComposer: View {
     var onDraftChange: () -> Void = {}
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.composerGlassNamespace) private var sharedGlass
     @Namespace private var glass
 
     var body: some View {
@@ -99,7 +115,9 @@ struct ChatComposer: View {
                 }
             }
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: draft.isExpanded ? controls.expandedCornerRadius : controls.collapsedCornerRadius))
-            .glassEffectID("composer", in: glass)
+            // 页面祖先（ChatShellView）注入共享 namespace 时用共享值：跨页
+            // 切换做同 ID matched 过渡，避免新页 glass 单独"泡泡式"出现。
+            .glassEffectID("composer", in: sharedGlass ?? glass)
         }
         .padding(.horizontal, draft.isExpanded ? ChatControlMetrics.expandedHorizontalInset : ChatControlMetrics.collapsedHorizontalInset)
         .padding(.top, 8)

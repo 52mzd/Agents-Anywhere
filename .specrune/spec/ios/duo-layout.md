@@ -98,17 +98,27 @@ let isDuoFoldableIPhone: Bool = {
   一起豁免会让键盘避让失效，引发焦点循环（双栏挂 GR、抽屉挂
   ChatShellView 侧栏内容，均 2026-10-27 真机验证）。抽屉形态底栏
   随键盘上移是遗留（insets 是 GR 参数污染，内容层修不动）。
-- **Duo 横屏点新会话闪现玻璃大圆（未解，系统级）**：detail 切换到
-  新会话页时右上（folder/… 按钮组）的 Liquid Glass 背景做 grow/shrink
-  重建，中间态是大圆泡泡。触发条件实测矩阵：Duo 横屏（detail 列
-  高大宽）有；Duo/15PM 竖屏（NavigationStack push 过渡）无；15PM
-  横屏（同 regularSplit 代码路径但 detail 572pt 窄）无——几何阈值
-  相关，与代码路径无關。上游 origin/main 原版同复现（worktree 构建
-  + 改签名装真机 5 分钟出结论）。已试且无效：transaction 压动画、
-  清 draft 焦点残留、glassEffectID 注释对照、detail 包
-  NavigationStack、ToolbarItem 合组、整页 opacity transition。
-  复现帧 <0.5s，连拍/录屏（host 锁死后不可用）均抓不到中间帧。
-  再战前提：先备好逐帧观测手段（如 Xcode Instruments 动画捕捉）。
+- **Duo 横屏点新会话闪现玻璃大圆（已解 2026-10-27）**：根因是
+  `deviceMenu` 的 toolbar label 在 isPreparing 时切换内容
+  （ellipsis↔spinner）——宽 detail（Duo 横屏）下系统 toolbar 渲染路径
+  对 label 内容切换有 bug，spinner 错位到输入框下方且尺寸放大成大圆。
+  触发矩阵：Duo 横屏有；竖屏（标准 toolbar 槽位）无；15PM 横屏
+  （detail 572pt 窄）无。上游同复现。修复：toolbar 图标无条件恒定，
+  isPreparing 转圈走 ChatHeaderStatus.preparing（导航栏 status 槽，
+  复用既有 isProgress mini spinner 体系）。
+  **规则**：系统 toolbar/容器内的 label 禁止内容切换（图标恒定，
+  状态反馈走 status 槽）；页面内容层的同类切换（workspaceButton）安全。
+  **教训一**：视觉瞬态 bug 先问用户"哪个元素在动、什么状态在变"——
+  用户一句"…变成 loading 圈且位置错了"抵过前面十轮盲试构建；观测
+  手段受限时应更依赖用户观测，不是更少。
+  **教训二**："上游也有 ≠ 不可修"——那是共同代码的交互 bug，修法是
+  绕开触发动作（去掉 label 切换），不是修系统动画层。
+  **教训三**：条件化修复（宽屏恒定/窄屏切换）两版（@State 异步置位、
+  GeometryReader 同步取值）均有漏网帧回归——条件分支天然带竞态，
+  无条件方案 + 反馈换位优先。
+  已试且无效的完整清单（别再试）：transaction 压动画、清 draft 焦点、
+  glassEffectID 注释/共享 namespace、detail 包 NavigationStack、
+  ToolbarItem 合组、整页 opacity transition、自绘右缘竖排。
 
 ## 双栏侧栏顶部偏移
 
