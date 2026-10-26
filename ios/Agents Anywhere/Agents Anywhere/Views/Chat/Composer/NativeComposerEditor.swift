@@ -99,12 +99,15 @@ struct NativeComposerEditor: UIViewRepresentable {
         // 重入死循环（updateUIView → becomeFirstResponder → 布局更新 →
         // updateUIView...，主线程假死）。异步后 isFirstResponder 判断在
         // 下一 runloop 已稳定，循环被打断。
-        let shouldFocus = draft.isFocused, isFirstResponder = view.isFirstResponder
+        // 异步块必须读"执行时"的实时意图，不能用捕获快照：抽屉展开等
+        // 转场中系统会短暂 resign（synchronize 已把 isFocused 写回
+        // false），拿旧快照 true 去弹键盘会引发键盘/布局反复弹跳
+        // （15PM 真机复现；上游同步版无此环）。
         DispatchQueue.main.async {
             guard view.window != nil else { return }
-            if shouldFocus, !view.isFirstResponder {
+            if draft.isFocused, !view.isFirstResponder {
                 view.becomeFirstResponder()
-            } else if !shouldFocus, view.isFirstResponder {
+            } else if !draft.isFocused, view.isFirstResponder {
                 view.resignFirstResponder()
             }
         }

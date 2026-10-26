@@ -132,6 +132,13 @@ struct ChatShellView: View {
                 onCopyDeviceId: copyDeviceId,
                 onCopySessionId: copySessionId
             )
+            // 直板抽屉形态的防御层：弹键盘后展开侧栏的转场中，键盘
+            // safe area 变化与 ScrollView 布局可能互相触发循环（真机
+            // 曾剧烈抖动）。根因已在 NativeComposerEditor（异步焦点块
+            // 改读实时意图），此挂载保留双保险；底栏随键盘上移在抽屉
+            // 形态留作遗留（insets 是 GeometryReader 参数污染，修在
+            // 内容层无效）。
+            .ignoresSafeArea(.keyboard)
         } content: { safeAreaInsets in
             mainContent
                 .modifier(ChatDetailNavigation(insets: safeAreaInsets))
