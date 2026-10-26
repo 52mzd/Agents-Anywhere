@@ -27,3 +27,6 @@
   完全不渲染（2026-10-26 两轮实测空白，全仓无先例）。
 - 改输入行（加/挪按钮）先读 duo-layout.md 的"ComposerLayout 多按钮
   排布契约"——声明顺序即视觉顺序，宽度公式自动适配。
+- 给 struct 加属性后调用点报 "argument 'X' must precede argument 'Y'"：
+  memberwise init 的参数顺序 = 属性声明顺序（2026-10-26 ChatComposerDock
+  连环两轮）。新属性插到声明列表哪个位置，调用点的实参就得跟着挪到哪。

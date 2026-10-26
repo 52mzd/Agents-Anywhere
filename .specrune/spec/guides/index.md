@@ -19,6 +19,7 @@ the questions that get skipped under time pressure.
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Spot a repeated pattern before it becomes a fifth implementation | When what you are about to write feels familiar |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Trace data across layer boundaries | When a change touches three or more layers |
 | [UI Feedback Loop Guide](./ui-feedback-loop-guide.md) | Verify the target before adjusting UI; verify asset content before adopting it | When adjusting UI by verbal description, or adopting images without seeing them |
+| [Gesture Semantics Guide](./gesture-semantics-guide.md) | List the state matrix before wiring a gesture to an effect | When a requirement says "this gesture/action = this effect" |
 
 ---
 
@@ -43,6 +44,16 @@ the questions that get skipped under time pressure.
 - [ ] Are you creating a new helper? ← Search first.
 
 → Read the [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
+
+### Gesture Semantics
+
+- [ ] The requirement says "gesture X = effect Y" — did you enumerate the state
+      combinations (keyboard up/down, panel forced/matched) × expected effect
+      BEFORE coding? An unfilled matrix cell = ambiguity to ask about, not to guess.
+- [ ] Are you classifying the device/form-factor to dispatch behavior? Prefer an
+      existing state signal over inventing a form-factor check.
+
+→ Read the [Gesture Semantics Guide](./gesture-semantics-guide.md)
 
 ### Reviewing a Change
 
