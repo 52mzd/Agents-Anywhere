@@ -259,6 +259,10 @@ struct ChatShellView: View {
     private func startNewSession() {
         // Reselecting this destination must also remount its local presentation
         // state, including the welcome reveal. The account still owns the draft.
+        // 共享 draft 会把上一页的聚焦状态带进新页：异步焦点块随后弹起
+        // 键盘又收起，横屏下像底部闪现一个大玻璃圆（真机报告）。
+        // 进新会话页不继承焦点，键盘不弹。
+        appState.nativeChatServices?.newSession.draft.isFocused = false
         newSessionPresentationID = UUID()
         selection = .newSession
         sidebar.selectDestination()
