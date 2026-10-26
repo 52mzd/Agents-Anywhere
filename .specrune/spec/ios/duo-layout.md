@@ -85,6 +85,19 @@ let isDuoFoldableIPhone: Bool = {
 - **SwiftUI 手势只在不透明内容上命中**：HStack 中间的 `Spacer` 空白区
   不参与 DragGesture 命中，手势会缩到角落文字处。挂手势前补
   `.contentShape(Rectangle())`（指令面板标题行整行可拖，2026-10-26）。
+- **异步焦点块禁止捕获状态快照**：`NativeComposerEditor.updateUIView`
+  的 become/resignFirstResponder 异步化（Duo 假死修复）若闭包捕获旧
+  `isFocused` 快照，转场中 UIKit 短暂 resign（synchronize 已写回
+  false）后旧快照 true 会强行弹回键盘，形成键盘/布局反复弹跳
+  （15PM 展开抽屉复现，上游同步版无此环）。异步执行时必须读实时值
+  （ComposerDraft 是 class，捕获引用即可）。附带教训：修 A 引入 B
+  后，先 diff 上游同文件找我们独有的行为差，再动手。
+- **键盘避让的 ignoresSafeArea 挂载层级**：挂视图内容层无效（父容器
+  已按键盘 safe area 压缩 frame）；要修整列不压缩，挂在包裹该列的
+  GeometryReader 上；且只能挂 sidebar/main 之一——连输入框所在层
+  一起豁免会让键盘避让失效，引发焦点循环（双栏挂 GR、抽屉挂
+  ChatShellView 侧栏内容，均 2026-10-27 真机验证）。抽屉形态底栏
+  随键盘上移是遗留（insets 是 GR 参数污染，内容层修不动）。
 
 ## 双栏侧栏顶部偏移
 
