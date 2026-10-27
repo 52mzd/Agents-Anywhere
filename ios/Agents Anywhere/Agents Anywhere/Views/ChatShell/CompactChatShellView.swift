@@ -65,10 +65,11 @@ struct CompactChatShellView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
+                    // Label（图标+标题）：与内屏竖排同规则——外屏横屏时
+                    // toolbar 同样进竖排，纯图标条目溢出菜单没名字。
                     Button { showsNewSession = true } label: {
-                        AppSymbol("square.and.pencil")
+                        Label(String(localized: "新会话"), image: AppSymbolAssets.names["square.and.pencil"] ?? "aa-SquarePen")
                     }
-                    .accessibilityLabel(String(localized: "New session"))
                 }
             }
             .navigationDestination(item: selectedSessionId) { id in
