@@ -13,6 +13,8 @@ struct ChatSidebarView: View {
     let onNewProjectSession: (String) -> Void
     let onRestoreSession: (String) async -> Bool
     let account: ChatSidebarAccount?
+    /// 宽 detail（Duo 横屏）新会话/头像迁到右缘竖排 toolbar，底栏隐藏。
+    var showsBottomControls = true
     let selectedDeviceId: V2ConnectorID?
     let selectedSessionId: V2SessionID?
     let isLoadingDevices: Bool
@@ -127,7 +129,7 @@ struct ChatSidebarView: View {
         .scrollIndicators(.hidden)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
         .overlay(alignment: .bottom) {
-            if let account {
+            if let account, showsBottomControls {
                 ChatSidebarBottomControls(
                     appState: appState,
                     account: account,

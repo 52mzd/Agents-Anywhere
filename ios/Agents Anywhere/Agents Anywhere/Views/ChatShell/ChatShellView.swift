@@ -12,6 +12,10 @@ struct ChatShellView: View {
     /// glass 做 matched 过渡，避免新页 glass 单独"泡泡式"出现（Duo 横屏
     /// 宽 detail 下肉眼可见的大圆闪现）。
     @Namespace private var composerGlass
+    /// 宽 detail（>1000pt，Duo 横屏）：新会话/头像迁到右缘竖排 toolbar，
+    /// 侧栏底栏清空。onGeometryChange 驱动，旋转时一次重建可接受。
+    @State private var isWideDetail = false
+    @State private var showsRailAccountSettings = false
     private var selection: ChatShellSelection {
         get { appState.chatSelection }
         nonmutating set { appState.chatSelection = newValue }
@@ -98,6 +102,22 @@ struct ChatShellView: View {
         scenePhase == .active && !sidebar.obscuresDetail ? selectedSessionId : nil
     }
 
+    /// 右缘竖排的头像按钮：行为同侧栏头像（打开账号设置）。
+    @ViewBuilder private var railAccountButton: some View {
+        if let account = sidebarAccount {
+            Button { showsRailAccountSettings = true } label: {
+                AccountAvatarView(displayName: account.displayName,
+                    source: account.avatarSource, size: 38)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel(String(localized: "账号"))
+            .sheet(isPresented: $showsRailAccountSettings) {
+                AccountSettingsSheet(appState: appState)
+            }
+        }
+    }
+
     private func sidebarLayout(_ layout: ChatSidebarState.Layout) -> some View {
         // Map and sort the session list once per body, not once per section.
         let sessions = sidebarSessions
@@ -123,6 +143,9 @@ struct ChatShellView: View {
                 onNewProjectSession: startProjectSession,
                 onRestoreSession: { await appState.setSessionArchived(sessionId: $0, archived: false) },
                 account: sidebarAccount,
+                // 宽 detail（Duo 横屏）新会话/头像移到右缘竖排 toolbar，
+                // 侧栏底栏清空不重复。
+                showsBottomControls: !isWideDetail,
                 selectedDeviceId: selectedDeviceId,
                 selectedSessionId: selectedSessionId,
                 isLoadingDevices: appState.isDashboardLoading && !appState.hasLoadedConnectors,
@@ -147,6 +170,27 @@ struct ChatShellView: View {
             mainContent
                 .modifier(ChatDetailNavigation(insets: safeAreaInsets))
                 .environment(\.composerGlassNamespace, composerGlass)
+                // "Duo 横屏"信号：系统在此形态把 toolbar 重排成右缘竖排。
+                // 注意 size 是 detail 列（横屏 ≈600×669，宽高比 0.9；竖屏
+                // 展开 ≈640×1300，比 0.49）——用宽高比 >0.75 区分，加机型
+                // 条件不误伤 iPad/竖屏。图标恒定不切换内容——该路径对
+                // label 内容切换有系统 bug（玻璃大圆，2026-10-27）。
+                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
+                    isWideDetail = isDuoFoldableIPhone
+                        && size.height > 0 && size.width / size.height > 0.75
+                }
+                .toolbar {
+                    if isWideDetail {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            AppGlassButton(systemImage: "square.and.pencil",
+                                style: .prominent, maxWidth: nil, action: startNewSession)
+                                .accessibilityLabel(String(localized: "新会话"))
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            railAccountButton
+                        }
+                    }
+                }
         }
     }
 
