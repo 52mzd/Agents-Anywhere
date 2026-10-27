@@ -122,6 +122,12 @@ let isDuoFoldableIPhone: Bool = {
 
 ## 右缘竖排 toolbar（iOS 26 宽 detail 系统容器）收编规则
 
+> 已被 req:ios/duo-layout.md#竖排-toolbar-官方规则与最终形态 取代
+> （2026-10-28）；正文保留为历史。结论性修正：条目**应收 Label（图标
+> +标题）**而非零修饰裸图标（Label 化后系统"…"溢出菜单才有内容、
+> 不再是死控件）；键盘期折叠的真因是**溢出**而非键盘，解法是
+> `visibilityPriority` + `ToolbarOverflowMenu`，**不是**高度阈值撤注入。
+
 宽 detail（Duo 横屏）下系统把 `topBarTrailing` items 重排成右缘竖排
 glass 容器。往里放自定义控件受两个正交维度约束（2026-10-27 八轮
 真机/模拟器实证）：
@@ -319,7 +325,25 @@ ChatTimelineContent 尾部的发送/运行状态行（"正在处理任务…"，
 权威来源：Apple iPhone Duo Tech Talks 111461-111466 + Lab Q&A（本地技能
 `iphone-duo-porting` / `swiftui-iphone-duo`，SDK 接口文件为一手验证）。
 
-**最终结构**（ChatPageToolbar）：
+**最终结构**（ChatPageToolbar，签名即契约）：
+
+```swift
+// shell 注入（ChatShellView，Duo 内屏恒注入、结构恒定）
+struct ChatRailContext {
+    let onNewSession: () -> Void
+    let onAccount: () -> Void
+    var avatarImage: UIImage?     // 像素层 38pt@3x 圆形蒙版成品
+}
+// 页面消费（NewSessionView / SessionChatView）
+ChatPageToolbar(railTrailing: [ChatRailButton],     // id 编入头像就绪状态
+                pageTrailing: [AnyView],            // 一般为空
+                overflowActions: [ChatOverflowAction]) // 进系统"…"第一层
+struct ChatRailButton: Identifiable { let id: String; let view: AnyView }
+struct ChatOverflowAction: Identifiable {
+    let title: String; var isDisabled = false; let handler: () -> Void
+}
+// RailPinnedItem = ToolbarItem + visibilityPriority(.high)（iOS 27 门控）
+```
 - 条目一律 `Label(标题, image: 资产名)`——竖排显图标、系统"…"溢出菜单显
   标题；纯图标/纯标题/自定义 view 条目不进竖排。例外：动态头像用裸
   `Image(uiImage:)`（竖排唯一实证可进的形态）。
