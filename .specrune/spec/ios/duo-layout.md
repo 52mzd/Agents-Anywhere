@@ -243,6 +243,11 @@ xcrun devicectl device process launch --device <UDID> com.dae.sr1023
   0 会让 `&&` 链继续装旧产物（本轮实测踩坑）。
 - 真机锁屏时 `devicectl launch` 报 `BSErrorCodeDescription = Locked`，
   解锁后手动打开或重试。
+- **"是不是我们引入的"判定——上游对照法**（2026-10-27 实战 5 分钟出
+  结论）：`git worktree add /tmp/up origin/main` 后在其 ios 目录用
+  `PRODUCT_BUNDLE_IDENTIFIER=com.dae.sr1023 DEVELOPMENT_TEAM=…` 覆盖
+  官方签名构建，装真机复现。疑点先做这个对照再动手修——玻璃圆圈
+  bug 走了十轮盲试，此法可开局即定性。
 
 ## 键盘跟随（2026-10-25 真机验收）
 

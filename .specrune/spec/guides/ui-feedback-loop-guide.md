@@ -114,6 +114,15 @@
     铰链事件流不同步（显示 Expanded 实报 partiallyOpen 127.8°）、软键盘
     无法可靠拉起、headless 重启后帧缓冲不渲染需 GUI 解锁。凡模拟器验证
     失败或矛盾，先怀疑环境再怀疑代码；真机行为与模拟器冲突时，真机为准。
+    **2026-10-27 增补（Xcode 27/Device Hub 实测）**：`simctl io` 已无
+    `sendTap`（仅截图/录屏）；`recordVideo` 被 kill 后 host 端录制锁
+    死（"Host recording is already in progress"）且 SIGTERM 不收尾产
+    0 字节文件；并行连拍有撕裂伪影（半渲染帧混入，OCR 位置不可信），
+    串行拍 0.5s/张又抓不到 <0.5s 瞬态。可用：Device Hub 把模拟器内容
+    的 accessibility 树透传到 Mac（orca computer-use 可读按钮/文本，
+    点击坐标映射失真常落错元素，只读不点）；无图像输入能力时 OCR
+    （swift Vision 脚本）+ ASCII 降采样渲染可判读结构轮廓。瞬态视觉
+    bug 的最快观测器仍是真机用户。
 
 15. **自绘手势/跟手动画之前，先找系统已有的交互**。2026-10-25 指令面板
     跟手拖动抖动连败 5 轮（transformEffect/offset/材质遮罩/手势竞争全试）
