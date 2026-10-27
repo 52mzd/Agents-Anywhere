@@ -12,9 +12,6 @@ struct ChatShellView: View {
     /// glass 做 matched 过渡，避免新页 glass 单独"泡泡式"出现（Duo 横屏
     /// 宽 detail 下肉眼可见的大圆闪现）。
     @Namespace private var composerGlass
-    /// 宽 detail（>1000pt，Duo 横屏）：新会话/头像迁到右缘竖排 toolbar，
-    /// 侧栏底栏清空。onGeometryChange 驱动，旋转时一次重建可接受。
-    @State private var isWideDetail = false
     @State private var showsRailAccountSettings = false
     private var selection: ChatShellSelection {
         get { appState.chatSelection }
@@ -167,7 +164,8 @@ struct ChatShellView: View {
                 account: sidebarAccount,
                 // 宽 detail（Duo 横屏）新会话/头像移到右缘竖排 toolbar，
                 // 侧栏底栏清空不重复。
-                showsBottomControls: !isWideDetail,
+                // Duo 内屏横竖屏都走 toolbar（同套逻辑），侧栏底栏恒空。
+                showsBottomControls: !isDuoFoldableIPhone,
                 selectedDeviceId: selectedDeviceId,
                 selectedSessionId: selectedSessionId,
                 isLoadingDevices: appState.isDashboardLoading && !appState.hasLoadedConnectors,
@@ -192,22 +190,12 @@ struct ChatShellView: View {
             mainContent
                 .modifier(ChatDetailNavigation(insets: safeAreaInsets))
                 .environment(\.composerGlassNamespace, composerGlass)
-                // "Duo 横屏"信号：系统在此形态把 toolbar 重排成右缘竖排。
-                // 注意 size 是 detail 列（横屏 ≈600×669，宽高比 0.9；竖屏
-                // 展开 ≈640×1300，比 0.49）——用宽高比 >0.75 区分，加机型
-                // 条件不误伤 iPad/竖屏。图标恒定不切换内容——该路径对
-                // label 内容切换有系统 bug（玻璃大圆，2026-10-27）。
-                // 高度 >450 排除键盘弹出态：键盘吃掉大半 detail 后系统把
-                // 竖排折叠成点不动的溢出"…"（真机实证）——此时撤注入，
-                // 侧栏底栏（同一开关）恢复，键盘收起后换回。
-                .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
-                    isWideDetail = isDuoFoldableIPhone
-                        && size.height > 450 && size.width / size.height > 0.75
-                }
-                // 右缘竖排按钮经页面级 toolbar 注入（ChatPageToolbar 的
-                // railTrailing）——shell 级 toolbar 项不进竖排（实证
-                // 2026-10-27：页面级 folder/… 进竖排，shell 级项留顶部）。
-                .environment(\.chatRail, isWideDetail ? ChatRailContext(
+                // Duo 内屏两个方向都注入（用户决策 2026-10-28：竖屏
+                // 遵循横排同一套逻辑）——横排系统重排成右缘竖排、竖排
+                // 落顶部导航栏，placement 恒为 topBarTrailing 由系统
+                // 自行分派。注入恒定、结构恒定：键盘期增删/切换会在
+                // 键盘收起后丢按钮（真机实证 2026-10-28 两轮）。
+                .environment(\.chatRail, isDuoFoldableIPhone ? ChatRailContext(
                     onNewSession: startNewSession,
                     onAccount: { showsRailAccountSettings = true },
                     avatarImage: railAvatarImage) : nil)
@@ -424,3 +412,9 @@ private struct ChatShellPlaceholderPage: View {
         .environment(AppState())
         .preferredColorScheme(.dark)
 }
+
+/// 禁止系统 toolbar 折叠（右缘竖排被键盘折叠成死"…"）。iOS 27+ API，
+/// 26 上原样返回（默认行为）。
+
+
+

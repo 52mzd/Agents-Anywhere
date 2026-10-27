@@ -100,19 +100,18 @@ struct SessionChatView: View, Equatable {
                 deviceName ?? session.metadata?.connectorId].compactMap { $0 }.joined(separator: " · "),
             status: model.headerStatus, alignsTitleLeading: true, onMenu: onMenu,
             // 右缘竖排按钮经页面级注入（shell 级 toolbar 项不进竖排）。
-            railTrailing: chatRail.map { chatRailButtons($0) } ?? []))
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { sheet = .files } label: { AppSymbol("folder") }
-                    .accessibilityLabel(String(localized: "文件管理"))
-                    .disabled(session.metadata?.cwd?.isEmpty != false)
-                Menu {
-                    Button(String(localized: "会话详情与导出"), systemImage: "info.circle") { sheet = .details }
-                    Button(String(localized: "复制会话 ID"), systemImage: "number") { UIPasteboard.general.string = session.id }
-                } label: { AppSymbol("ellipsis") }
-                .accessibilityLabel(String(localized: "会话菜单"))
-            }
-        }
+            railTrailing: chatRail.map { chatRailButtons($0) } ?? [],
+            // folder 留竖排（Label 形式：竖排显图标、溢出菜单显标题）；
+            // 原 ellipsis 菜单动作直接进系统 "…" 溢出菜单（官方
+            // ToolbarOverflowMenu，消除"…"套"…"）。
+            // folder 同样走纯文字溢出行（同 NewSessionView 注释）。
+            pageTrailing: [],
+            overflowActions: [
+                ChatOverflowAction(title: String(localized: "文件管理"),
+                    isDisabled: session.metadata?.cwd?.isEmpty != false) { sheet = .files },
+                ChatOverflowAction(title: String(localized: "会话详情与导出")) { sheet = .details },
+                ChatOverflowAction(title: String(localized: "复制会话 ID")) { UIPasteboard.general.string = session.id }
+            ]))
         .modifier(SessionTakeoverConfirmation(pending: $pendingTakeover, isDsh: model.isDsh) { enabled in
             model.error = nil
             if !(await model.setTakeover(enabled)), let error = model.takeoverError { model.error = error }

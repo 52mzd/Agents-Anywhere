@@ -313,3 +313,44 @@ ChatTimelineContent 尾部的发送/运行状态行（"正在处理任务…"，
 末条消息后的 20pt 间距改成底部 overlay 浮层——运行中状态文字直接浮
 盖末条消息、与工具调用/推理文本重合。省间距的收益远小于叠字，回归
 上游原样；间距问题如再修，方向是调 VStack spacing，不是挪出布局流。
+
+## 竖排 toolbar 官方规则与最终形态（2026-10-28，多轮真机实证收敛）
+
+权威来源：Apple iPhone Duo Tech Talks 111461-111466 + Lab Q&A（本地技能
+`iphone-duo-porting` / `swiftui-iphone-duo`，SDK 接口文件为一手验证）。
+
+**最终结构**（ChatPageToolbar）：
+- 条目一律 `Label(标题, image: 资产名)`——竖排显图标、系统"…"溢出菜单显
+  标题；纯图标/纯标题/自定义 view 条目不进竖排。例外：动态头像用裸
+  `Image(uiImage:)`（竖排唯一实证可进的形态）。
+- 高频项 `.visibilityPriority(.high)`（iOS 27+，RailPinnedItem 包装）：
+  键盘压缩竖排时保留在栏内；溢出自下而上，低优先级组先进"…"。
+- 次级动作放 `ToolbarOverflowMenu`（iOS 27+）直接进系统"…"第一层——
+  **禁止自造 ellipsis 菜单**（会形成"…"套"…"两层）。
+- Duo 内屏**横竖屏恒注入**同一套条目（placement 恒 `.topBarTrailing`，
+  系统自行分派：横屏进右缘竖排、竖屏进顶栏）；侧栏底栏恒空。
+
+**踩坑实录（每条都有真机证据）**：
+- 系统"…"溢出是死控件时不可交互——但条目无标题时菜单为空也表现为死；
+  Label 化后系统"…"正常弹菜单。
+- `ToolbarItemGroup` 是竖排溢出的最小单位，组内任一放不下整组折叠。
+- 相邻同 placement 的组会被并成一个大胶囊；`ToolbarSpacer(.fixed)` 断开。
+- `toolbarMinimizationBehavior` 只管**滚动**触发的折叠（官方文档），
+  与键盘溢出折叠是两回事。
+- 键盘期对 toolbar 做任何增删/结构切换（撤注入、组↔菜单、placement
+  切换）都会在恢复后**丢条目**——恒定结构 + 官方优先级机制才是解。
+- 运行时更新条目**内容**系统不重画（头像异步就绪后不出现，点新会话
+  换页才出现）：把状态编进 ForEach id（placeholder→avatar 换 id 强制
+  重建条目）。
+- rail 检测不用几何比例猜：官方信号 `toolbarVerticalEdge`（iOS 27.1+，
+  nil=水平条）；本仓最终连它也不需要——Duo 内屏恒注入即可。
+
+## 机型门控的保留理由（swiftui-iphone-duo 审计结论 2026-10-28）
+
+`isDuoFoldableIPhone` 共 5 处，属 skill 红旗（`if isIPhoneDuo`）但**有意
+保留**：rail 注入/侧栏底栏清空/外屏双 tab 是折叠屏专属产品行为，用
+`horizontalSizeClass == .regular` 替代会误伤 15PM 横屏（同样 regular
+width）。已知的取舍：内屏聊天列全宽（2200 上限）违背 Rule 21"更宽≠
+更长文本行"，是用户决策"折叠屏铺满"。审计其余全合规（无 UIScreen/
+orientation/自定义 bar；adaptive grid、ViewThatFits、可读上限、系统
+容器齐全）。sheets 36 处未设 presentationPlacement，半折叠姿态待抽查。
