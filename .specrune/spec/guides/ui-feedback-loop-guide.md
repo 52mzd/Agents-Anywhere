@@ -150,3 +150,16 @@
     begin——它消费 pendingBottomRequest，guard 里的第二次调用拿 nil，
     诊断代码自己制造了 bug，误导一轮排查。诊断只读快照（打印已捕获
     的值），或先 `let r = f(); log(r)` 再用 r。
+
+18. **系统容器行为异常，先读官方一手资料，再写第一行修复代码**。
+    2026-10-28 竖排 toolbar 键盘折叠连环 12 轮真机往返：在"系统见键盘
+    必折叠、不可控"的错误心智模型上连造 4 版修复（高度门槛×2、
+    ignoresSafeArea 保高、minimizationBehavior），全部无效——真因是
+    **溢出**（条目无标题+组单位放不下），答案全在官方 iPhone Duo
+    规则里（Label 图标+标题、溢出自下而上、ToolbarOverflowMenu、
+    visibilityPriority），用户一句"三连排才会被压缩吧"点破假设比
+    4 版代码都快。诊断顺序：①SDK swiftinterface（本地一手、含
+    全部可用性）②Apple 官方规则/Tech Talks ③社区整理的官方资料
+    （如 iphone-duo-porting skill）④然后才动手。每个实验**只动一个
+    变量**——那轮"620 门槛+自绘 overlay"两变量同改，结果无法归因。
+    用户的直觉观察是高价值假设来源，认真对待"这不对吧"。
