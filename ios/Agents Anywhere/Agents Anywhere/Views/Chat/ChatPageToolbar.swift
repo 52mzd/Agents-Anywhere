@@ -25,6 +25,43 @@ struct ChatDetailNavigation: ViewModifier {
     }
 }
 
+/// Duo 横屏右缘竖排注入的动作（ChatShellView 持有，页面级 toolbar 消费
+/// ——shell 级 toolbar 项不进竖排，见 ChatPageToolbar.railTrailing）。
+struct ChatRailContext {
+    let onNewSession: () -> Void
+    let onAccount: () -> Void
+    /// 真实头像（缓存 UIImage）；竖排容器只收零修饰 label，此处不做
+    /// frame/裁剪，交给系统按钮样式。
+    var avatarImage: UIImage?
+}
+
+private struct ChatRailKey: EnvironmentKey {
+    static let defaultValue: ChatRailContext? = nil
+}
+extension EnvironmentValues {
+    var chatRail: ChatRailContext? {
+        get { self[ChatRailKey.self] }
+        set { self[ChatRailKey.self] = newValue }
+    }
+}
+
+/// 右缘竖排按钮（零修饰图标——系统竖排容器拒收带修饰/自定义结构的
+/// label；头像用零修饰 UIImage，有图显图、无图 symbol）。
+func chatRailButtons(_ rail: ChatRailContext) -> [AnyView] {
+    [
+        AnyView(Button(action: rail.onNewSession) { AppSymbol("square.and.pencil") }
+            .accessibilityLabel(String(localized: "新会话"))),
+        AnyView(Button(action: rail.onAccount) {
+            if let avatar = rail.avatarImage {
+                Image(uiImage: avatar)
+            } else {
+                AppSymbol("person.crop.circle")
+            }
+        }
+        .accessibilityLabel(String(localized: "账号")))
+    ]
+}
+
 /// Native title/subtitle placements and toolbar items own size, spacing, glass
 /// grouping and scroll-edge rendering. No header view sits in the timeline.
 struct ChatPageToolbar: ViewModifier {
@@ -33,6 +70,10 @@ struct ChatPageToolbar: ViewModifier {
     var status: ChatHeaderStatus?
     var alignsTitleLeading = false
     let onMenu: () -> Void
+    /// Duo 横屏（宽 detail，系统 toolbar 收编成右缘竖排）时追加的尾部
+    /// 按钮。必须挂在页面级——shell 级 toolbar 项不进竖排（2026-10-27
+    /// 实证：页面级 folder/… 进竖排，shell 级新会话/头像留顶部）。
+    var railTrailing: [AnyView] = []
 
     func body(content: Content) -> some View {
         content
@@ -45,6 +86,9 @@ struct ChatPageToolbar: ViewModifier {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onMenu) { SidebarMenuIcon() }
                         .accessibilityLabel(String(localized: "打开侧栏"))
+                }
+                ForEach(railTrailing.indices, id: \.self) { index in
+                    ToolbarItem(placement: .topBarTrailing) { railTrailing[index] }
                 }
                 if alignsTitleLeading {
                     // Use the title region's available width. A leading bar

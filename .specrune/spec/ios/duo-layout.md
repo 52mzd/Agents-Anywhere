@@ -120,6 +120,33 @@ let isDuoFoldableIPhone: Bool = {
   glassEffectID 注释/共享 namespace、detail 包 NavigationStack、
   ToolbarItem 合组、整页 opacity transition、自绘右缘竖排。
 
+## 右缘竖排 toolbar（iOS 26 宽 detail 系统容器）收编规则
+
+宽 detail（Duo 横屏）下系统把 `topBarTrailing` items 重排成右缘竖排
+glass 容器。往里放自定义控件受两个正交维度约束（2026-10-27 八轮
+真机/模拟器实证）：
+
+1. **注入层级：只收页面级**。shell 级（ChatShellView 的 content
+   closure 上）声明的 toolbar 项不进竖排、留顶部导航栏；页面级
+   （页面 body 内，经 ChatPageToolbar.railTrailing / environment
+   `chatRail` 注入）与 folder/… 同源，进竖排。
+2. **内容形式：只收零修饰 label**。纯 symbol / 裸 `Image(uiImage:)`
+   可以；带 frame/clipShape 修饰链的被踢回顶部；自定义 SwiftUI
+   视图（AccountAvatarView 等）被直接丢弃。裸 UIImage 按自身
+   size(pt) 显示——裁剪/缩放必须在像素层完成（居中裁方+圆蒙版，
+   `UIGraphicsImageRenderer` format.scale=3 防"像素数当 pt"渲染
+   巨大），渲染经 onChange 驱动 @State 缓存。
+
+键盘弹出（detail 高度骤减）时系统把竖排折叠成**点不动的溢出
+"…"**——用 detail 高度阈值（>450）在键盘态主动撤注入，侧栏底栏
+（同一开关）恢复，键盘收起换回。iOS 27 另有 `topBarPinnedTrailing`
+可钉顶栏不进竖排（未采用，形态不符）。
+
+**方法论**：黑盒系统容器调试，先枚举正交维度（层级/形式/时机），
+一轮只变一个并记录矩阵——本轮前四轮把"层级"与"形式"混着试全灭，
+拆开后两轮破案。移动端黑盒 UI 调试中用户是最高效观测器（本轮与
+玻璃圆圈轮两次验证，用户插话均为转折点）。
+
 ## 双栏侧栏顶部偏移
 
 `SidebarDrawer.swift` `SidebarDrawerNativeSidebar.topLift`：

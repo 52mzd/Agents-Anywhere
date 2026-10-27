@@ -16,6 +16,7 @@ struct NewSessionView: View, Equatable {
     @State private var showsWorkspace = false
     @State private var showsFiles = false
     @Environment(AppState.self) private var appState
+    @Environment(\.chatRail) private var chatRail
     @State private var confirmsRetry = false
     @AppStorage(ProjectSidebarPreferences.sessionListKey) private var showsSessionList = false
     @ScaledMetric(relativeTo: .body) private var bodyLineHeight: CGFloat = 22
@@ -75,8 +76,10 @@ struct NewSessionView: View, Equatable {
             // 下触发系统 glass 重排，spinner 错位放大成大圆闪现（真机定位，
             // 2026-10-27；宽度条件判断两版均有漏网帧，放弃条件化）。
             // isPreparing 反馈统一放导航栏 status 槽（原位 mini 转圈）。
+            // 右缘竖排按钮经页面级注入（shell 级 toolbar 项不进竖排）。
             .modifier(ChatPageToolbar(title: "",
-                status: model.isPreparing ? .preparing : nil, onMenu: onMenu))
+                status: model.isPreparing ? .preparing : nil, onMenu: onMenu,
+                railTrailing: chatRail.map { chatRailButtons($0) } ?? []))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showsFiles = true } label: { AppSymbol("folder") }

@@ -89,6 +89,44 @@ struct ChatShellView: View {
         return ChatSidebarAccount(me: me, avatarSource: appState.accountAvatarSource)
     }
 
+    /// 右缘竖排头像的像素层缓存：source 变化时在 onChange（body 求值外）
+    /// 重渲染，body 高频重算只读缓存。
+    @State private var railAvatarCache: (source: AccountAvatarImageSource, image: UIImage)?
+
+    /// 右缘竖排的真实头像（读缓存）；remote/无图走 symbol。竖排容器只收
+    /// 零修饰 label——显示原始尺寸，裁剪/缩放必须在图片像素层完成
+    ///（居中裁方 + 圆形蒙版，38pt 对齐侧栏头像视觉）。
+    private var railAvatarImage: UIImage? {
+        guard let source = appState.accountAvatarSource,
+              let cache = railAvatarCache, cache.source == source else { return nil }
+        return cache.image
+    }
+
+    /// 渲染竖排头像（onChange 驱动，不在 body 求值内写 state）。
+    private func updateRailAvatar() {
+        guard let source = appState.accountAvatarSource,
+              railAvatarCache?.source != source else { return }
+        guard case let .data(data) = source,
+              let image = AccountAvatarImageCache.image(for: data) else {
+            railAvatarCache = nil
+            return
+        }
+        let shortest = min(image.size.width, image.size.height)
+        let cropRect = CGRect(x: (image.size.width - shortest) / 2,
+                              y: (image.size.height - shortest) / 2, width: shortest, height: shortest)
+        guard let cropped = image.cgImage?.cropping(to: cropRect) else { return }
+        // scale=3：points 的 3x 像素。scale=1 会把像素数当成 pt 渲染
+        //——竖排里巨大（真机实证）。
+        let points = 38 as CGFloat
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 3
+        railAvatarCache = (source, UIGraphicsImageRenderer(size: CGSize(width: points, height: points), format: format).image { _ in
+            let rect = CGRect(x: 0, y: 0, width: points, height: points)
+            UIBezierPath(ovalIn: rect).addClip()
+            UIImage(cgImage: cropped).draw(in: rect)
+        })
+    }
+
     private var sidebarSessions: [ChatSidebarSession] {
         appState.sessions
             .filter { !$0.archived }
@@ -100,22 +138,6 @@ struct ChatShellView: View {
 
     private var visibleSessionID: V2SessionID? {
         scenePhase == .active && !sidebar.obscuresDetail ? selectedSessionId : nil
-    }
-
-    /// 右缘竖排的头像按钮：行为同侧栏头像（打开账号设置）。
-    @ViewBuilder private var railAccountButton: some View {
-        if let account = sidebarAccount {
-            Button { showsRailAccountSettings = true } label: {
-                AccountAvatarView(displayName: account.displayName,
-                    source: account.avatarSource, size: 38)
-            }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .accessibilityLabel(String(localized: "账号"))
-            .sheet(isPresented: $showsRailAccountSettings) {
-                AccountSettingsSheet(appState: appState)
-            }
-        }
     }
 
     private func sidebarLayout(_ layout: ChatSidebarState.Layout) -> some View {
@@ -175,21 +197,25 @@ struct ChatShellView: View {
                 // 展开 ≈640×1300，比 0.49）——用宽高比 >0.75 区分，加机型
                 // 条件不误伤 iPad/竖屏。图标恒定不切换内容——该路径对
                 // label 内容切换有系统 bug（玻璃大圆，2026-10-27）。
+                // 高度 >450 排除键盘弹出态：键盘吃掉大半 detail 后系统把
+                // 竖排折叠成点不动的溢出"…"（真机实证）——此时撤注入，
+                // 侧栏底栏（同一开关）恢复，键盘收起后换回。
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
                     isWideDetail = isDuoFoldableIPhone
-                        && size.height > 0 && size.width / size.height > 0.75
+                        && size.height > 450 && size.width / size.height > 0.75
                 }
-                .toolbar {
-                    if isWideDetail {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            AppGlassButton(systemImage: "square.and.pencil",
-                                style: .prominent, maxWidth: nil, action: startNewSession)
-                                .accessibilityLabel(String(localized: "新会话"))
-                        }
-                        ToolbarItem(placement: .topBarTrailing) {
-                            railAccountButton
-                        }
-                    }
+                // 右缘竖排按钮经页面级 toolbar 注入（ChatPageToolbar 的
+                // railTrailing）——shell 级 toolbar 项不进竖排（实证
+                // 2026-10-27：页面级 folder/… 进竖排，shell 级项留顶部）。
+                .environment(\.chatRail, isWideDetail ? ChatRailContext(
+                    onNewSession: startNewSession,
+                    onAccount: { showsRailAccountSettings = true },
+                    avatarImage: railAvatarImage) : nil)
+                .onChange(of: appState.accountAvatarSource, initial: true) { _, _ in
+                    updateRailAvatar()
+                }
+                .sheet(isPresented: $showsRailAccountSettings) {
+                    AccountSettingsSheet(appState: appState)
                 }
         }
     }
