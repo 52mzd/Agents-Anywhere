@@ -44,9 +44,11 @@ struct ChatComposer: View {
         GlassEffectContainer(spacing: 12) {
             VStack(spacing: 0) {
                 if !draft.attachments.isEmpty { attachmentTray }
-                // Duo 保持 collapsed 单行布局（按钮在编辑器两侧，对齐系统
-                // 短信形态）：expanded 的上下两层结构在半折叠下占双倍高度。
-                ComposerLayout(expanded: draft.isExpanded && !isDuoFoldableIPhone,
+                // 上游同款行为：随内容增高，超上限后 sizeThatFits 切回
+                // isScrollEnabled=true 由系统接管滚动与光标跟随。曾试过
+                // Duo 全域 collapsed + 手动 setContentOffset 光标跟随，
+                // 真机上第三行起布局溢出盖按钮，回归上游（2026-10-28）。
+                ComposerLayout(expanded: draft.isExpanded,
                     maximumEditorHeight: maximumEditorHeight, controls: controls) {
                     Button(action: onOptions) {
                         AppSymbol("plus", size: 24)
@@ -99,7 +101,10 @@ struct ChatComposer: View {
                     // systemName 在本项目环境不渲染（全仓无先例），用 AppSymbol 资产。
                     if draft.isFocused {
                         Button {
-                            draft.isFocused = false
+                            // 直接 resign：只写 draft.isFocused 走 updateUIView
+                            // 异步收起链，输入过文字后真机上竞态失效（键盘
+                            // 不落）。同步 resign 出自按钮事件上下文，安全。
+                            editor.finishEditing()
                         } label: {
                             // systemName 在本项目环境不渲染（全仓无先例，
                             // 两轮实测空白），统一用 AppSymbol 资产图标。

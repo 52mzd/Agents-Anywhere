@@ -58,9 +58,9 @@ struct NewSessionView: View, Equatable {
                         .padding(.leading, 6)
                         .padding(.bottom, 6)
                 ChatComposerDock(draft: model.draft, settings: model.settings,
-                    // Duo 单行编辑器上限与 SessionChatView 保持一致（同概念同行为）。
-                    maximumEditorHeight: isDuoFoldableIPhone ? 44
-                        : min(160, max(72, geometry.size.height * 0.30)),
+                    // 上游同款：随内容增高（本屏 ~2 行封顶），超上限
+                    // 内部滚动。半折叠单行方案已弃（盖按钮、光标出视野）。
+                    maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)),
                     controls: controls,
                     canSend: model.canCreate, canAttach: model.canAttach && model.prepared != nil,
                     canSelectModel: model.prepared?.capabilities.allows("catalog.model") == true,

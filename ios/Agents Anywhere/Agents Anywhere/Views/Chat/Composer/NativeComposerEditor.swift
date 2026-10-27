@@ -72,6 +72,11 @@ struct NativeComposerEditor: UIViewRepresentable {
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.contentInset = .zero
+        // scrollEnabled 必须关：开启时 UITextView.sizeThatFits 返回固定
+        // frame 高，破坏自适应增高（2026-10-27 真机实证：输入满行不增
+        // 高、文字溢出不可见）。副作用是系统不跟随光标横滚——由
+        // Coordinator 手动 setContentOffset 补上（scrollEnabled=false
+        // 只禁交互滚动，程序设置仍生效）。
         view.isScrollEnabled = false
         view.showsVerticalScrollIndicator = true
         view.keyboardDismissMode = .none

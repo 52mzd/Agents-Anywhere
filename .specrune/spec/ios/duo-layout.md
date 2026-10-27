@@ -283,3 +283,25 @@ xcrun devicectl device process launch --device <UDID> com.dae.sr1023
   无指令的 runtime 下收起键会落在发送旁（已知边缘，暂不修）。
 - ChatComposerDock 的指令面板是**浮层**（overlay + dockHeight 偏移），
   不占布局流；新增弹出类 UI 照此模式（见 guides 铁律 16）。
+
+## Composer 输入框：回归上游，放弃单行/手动跟随方案（2026-10-28）
+
+上游模式即正确答案：`expanded: draft.isExpanded` + 高度
+`min(160, max(72, height*0.30))`，`sizeThatFits` 在测得高度超上限时自动
+切回 `isScrollEnabled = true`，内部滚动与光标跟随全部交还系统。
+本轮弃用的两条岔路及教训：
+
+- **Duo 全域 collapsed 单行（44 钳制）**：ComposerLayout 在 collapsed 下
+  `sizeThatFits` 恒返回固定胶囊高度，编辑器只是居中向外溢出绘制——
+  玻璃不长高、文字"跳出输入框"，第三行起溢出的编辑器视图盖住尾部
+  按钮导致收键盘键失灵。**给不自适应的容器调高度上限是治标**。
+- **手动 setContentOffset 光标跟随**（scrollEnabled=false 下程序设置
+  仍生效）：内容偏移无系统回收，状态残留，与增高切换互相干扰。为
+  钳制方案打的补丁，钳制一撤就必须整块删除，不能留。
+- `scrollEnabled=false` 是上游固有设定（sizeThatFits 自适应增高的
+  前提），不是我们加的——不要动它。
+- 收起键盘按钮**直接 `editor.finishEditing()`（同步 resign）**，不要
+  只写 `draft.isFocused = false` 走 updateUIView 异步收起链：输入过
+  文字后该链真机竞态失效（键盘不落）。按钮事件上下文里同步 resign
+  安全；危险的只是布局中间态里的同步 setContentOffset（曾致
+  CALayer NSException 闪退，见上文）。

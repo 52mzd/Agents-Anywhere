@@ -185,10 +185,9 @@ struct SessionChatView: View, Equatable {
     /// Body 内联这一长串参数会让 Swift 类型检查超时（实测），拆方法。
     private func composerDock(geometry: GeometryProxy) -> ChatComposerDock {
         ChatComposerDock(draft: session.composer, settings: model.settings,
-            // Duo 半折叠聚焦时编辑器限单行（对齐系统短信：输入框不撑成
-            // 多行大块、不视觉跨屏），文字多时内部滚动。
-            maximumEditorHeight: isDuoFoldableIPhone ? 44
-                : min(160, max(72, geometry.size.height * 0.30)),
+            // 上游同款：随内容增高（本屏 ~2 行封顶），超上限内部滚动。
+            // 半折叠单行方案已弃（盖按钮、光标出视野）。
+            maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)),
             controls: controls,
             canSend: session.canSend, canAttach: model.canAttach,
             canSelectModel: session.runtime.allows("catalog.model"),
