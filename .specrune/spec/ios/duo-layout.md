@@ -305,3 +305,11 @@ xcrun devicectl device process launch --device <UDID> com.dae.sr1023
   文字后该链真机竞态失效（键盘不落）。按钮事件上下文里同步 resign
   安全；危险的只是布局中间态里的同步 setContentOffset（曾致
   CALayer NSException 闪退，见上文）。
+
+## 尾部状态行必须在布局流内（2026-10-28）
+
+ChatTimelineContent 尾部的发送/运行状态行（"正在处理任务…"，恒定
+32pt、无状态时 Color.clear 占位）是上游刻意的**布局流元素**。曾为省
+末条消息后的 20pt 间距改成底部 overlay 浮层——运行中状态文字直接浮
+盖末条消息、与工具调用/推理文本重合。省间距的收益远小于叠字，回归
+上游原样；间距问题如再修，方向是调 VStack spacing，不是挪出布局流。

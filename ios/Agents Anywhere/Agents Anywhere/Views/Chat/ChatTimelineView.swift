@@ -443,31 +443,32 @@ private struct ChatTimelineContent: View, Equatable {
                 .disabled(model.session.isLoadingHistory || isLoadingLatest || isLoadingOlder)
                 .onScrollVisibilityChange { onPromptVisibility($0) }
             }
-        }
-        // 尾部不再有 spacer 元素（哪怕高度 0，VStack 的组间距仍会在末条
-        // 消息后留 20pt，导致末条消息不贴输入框）。尾底可见性探针与发送
-        // 状态文字全部改为 VStack 底部 overlay：不占布局高度，内容底=
-        // 末条消息底，且高度恒定（不触发虚假 follow 请求）。
-        .overlay(alignment: .bottom) {
-            ZStack(alignment: .bottom) {
-                Color.clear.frame(height: 96)
-                    .onScrollVisibilityChange(threshold: 0.01) { onTailVisibility(.near, $0) }
-                    .allowsHitTesting(false).accessibilityHidden(true)
-                Color.clear.frame(height: 2)
-                    .onScrollVisibilityChange(threshold: 0.5) { onTailVisibility(.end, $0) }
-                    .allowsHitTesting(false).accessibilityHidden(true)
+            // Constant breathing room: status text and card counts cannot
+            // change this spacer or create a spurious follow request.
+            // 必须留在布局流内（曾改成底部 overlay 省掉 20pt 间距：运行中
+            // 状态文字直接浮在末条消息上、与工具调用/推理文本重合，
+            // 2026-10-28 真机实证后回归上游）。
+            Group {
                 if let text = model.sendingPlaceholder {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text(text).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                         Spacer(minLength: 0)
                     }
-                    .fixedSize(horizontal: false, vertical: true)
-                    .offset(y: -6)
-                    .allowsHitTesting(false)
+                } else { Color.clear }
+            }.frame(height: 32)
+                .traceChatLayout("tail-spacer")
+                .overlay(alignment: .bottom) {
+                    Color.clear.frame(height: 96)
+                        .onScrollVisibilityChange(threshold: 0.01) { onTailVisibility(.near, $0) }
+                        .allowsHitTesting(false).accessibilityHidden(true)
                 }
-            }
-            .id("tail")
+                .overlay(alignment: .bottom) {
+                    Color.clear.frame(height: 2)
+                        .onScrollVisibilityChange(threshold: 0.5) { onTailVisibility(.end, $0) }
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                }
+                .id("tail")
         }
         .modifier(ChatPageContentColumn(horizontalInset: nil))
         .coordinateSpace(name: "chat.timeline.content")
