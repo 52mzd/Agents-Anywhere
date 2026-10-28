@@ -72,7 +72,10 @@ test('AA lists the model selector and session skills, executing skills as queued
   // Skill execution is one queued user message; DSH's agent pre-step reads the /name token.
   const result = await f.router.request('executeCommand', { ...params, command: 'animate', raw: '/animate fade the card' }, signal()) as Result
   assert.equal(result.ok, true)
+  // Connector validation downgrades ok acks missing kind/commandId to "outcome unknown".
   assert.equal(result.result.executionState, 'accepted')
+  assert.equal(result.result.kind, 'success')
+  assert.match(result.result.commandId, /^pending-/)
   for (let i = 0; i < 200 && !adapter.release; i++) await delay(10)
   assert.ok(adapter.release, 'message reaches the official Agent loop')
   adapter.release!()

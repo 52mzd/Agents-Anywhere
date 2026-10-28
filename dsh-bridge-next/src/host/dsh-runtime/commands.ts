@@ -164,12 +164,34 @@ export class RuntimeCommands {
     if (!parsed || parsed.name !== command) return fail('invalid_command', 'The raw command must invoke the requested native command name.')
     if (command !== 'compact') return await this.executeSkill(id, command, line, signal)
     const agent = await this.agent(id, signal)
-    // Cancellation before admission is a known rejection. Once the native handler
-    // starts, thrown/aborted execution cannot prove its effects were rolled back.
+    // Settlement races a short budget: quick commands keep their full settled
+    // result; slow ones (/compact on a large session outlives every RPC
+    // timeout up the chain — server 30s, bridge client 30s) report accepted
+    // instead of surfacing a false "outcome unknown" after a timed-out wait.
+    // The registry signal follows the request signal while the caller waits,
+    // so an in-flight cancel still aborts and settles the native handler; on
+    // the timeout win the follower is detached and late settlement lands on
+    // the session log (command/done).
     signal.throwIfAborted()
+    const controller = new AbortController()
+    const onAbort = () => controller.abort()
+    signal.addEventListener('abort', onAbort, { once: true })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const budget = new Promise<'timed-out'>(resolve => { timer = setTimeout(() => resolve('timed-out'), 5000) })
     try {
-      const execution = await registry.execute(agent, line, [], signal)
-      if (!execution) return fail('unknown_command', 'This native DSH command is not registered for this Agent. Refresh the command menu.')
+      const winner = await Promise.race([
+        registry.execute(agent, line, [], controller.signal).then(value => value ?? ('unregistered' as const)),
+        budget,
+      ])
+      if (winner === 'timed-out') {
+        // Contract: an ok ack must carry kind='success' + commandId; the
+        // connector validates all three or downgrades to "outcome unknown".
+        // No native commandId exists yet at budget expiry, so a stable
+        // synthetic one stands in (server and clients never join on it).
+        return { command, ok: true, result: { commandId: `pending-${randomUUID()}`, kind: 'success', executionState: 'accepted' } }
+      }
+      if (winner === 'unregistered') return fail('unknown_command', 'This native DSH command is not registered for this Agent. Refresh the command menu.')
+      const execution = winner
       const result = execution.result
       return { command, ok: result.kind === 'success',
         ...(result.kind === 'error' ? { code: 'command_error' } : {}),
@@ -179,10 +201,16 @@ export class RuntimeCommands {
           ...(result.kind === 'success' && result.sourceEventSeq !== undefined ? { sourceEventSeq: Number(result.sourceEventSeq) } : {}),
           executionState: result.kind === 'success' ? 'accepted' : 'completed' },
       }
-    } catch {
+    } catch (error) {
+      // 秒报"结果不确定"多为此处瞬间抛错（宿主命令服务不兼容等），
+      // 静默会把真实原因藏成不可归因的 uncertain——必须留痕。
+      this.ctx.logger.warn('DSH command execution could not be confirmed', error)
       return { command, ok: false, code: signal.aborted ? 'command_outcome_unknown' : 'command_failed',
         message: 'DSH command execution could not be confirmed. Refresh session state before deciding whether to submit again.',
         result: { executionState: 'unknown', retryable: false } }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+      if (!signal.aborted) signal.removeEventListener('abort', onAbort)
     }
   }
 
@@ -200,8 +228,11 @@ export class RuntimeCommands {
     signal.throwIfAborted()
     try {
       await this.native().send(id, line, randomUUID(), undefined, false, {}, undefined, signal)
-      return { command, ok: true, result: { executionState: 'accepted' } }
-    } catch {
+      // Same contract as the compact timeout branch: ok acks need the full trio.
+      return { command, ok: true, result: { commandId: `pending-${randomUUID()}`, kind: 'success', executionState: 'accepted' } }
+    } catch (error) {
+      // 静默吞错让每个失败都变成不可归因的"结果不确定"——记日志留痕。
+      this.ctx.logger.warn('DSH skill execution could not be confirmed', error)
       return { command, ok: false, code: signal.aborted ? 'command_outcome_unknown' : 'command_failed',
         message: 'DSH skill execution could not be confirmed. Check the timeline before submitting again.',
         result: { executionState: 'unknown', retryable: false } }
