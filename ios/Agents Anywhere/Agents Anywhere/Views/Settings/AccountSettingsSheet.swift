@@ -6,6 +6,8 @@ struct AccountSettingsSheet: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceValue = AppAppearance.system.rawValue
     @AppStorage(ProjectSidebarPreferences.sessionListKey) private var showsSessionList = false
     @AppStorage(ProjectSidebarPreferences.compactSessionListKey) private var compactSessionList = false
+    @AppStorage(ChatSidebarState.openOnLaunchDefaultsKey) private var openSidebarOnLaunch = true
+    @AppStorage(ChatSidebarState.rememberStateDefaultsKey) private var rememberSidebarState = false
     @AppStorage(ReplyPresentation.plainFadeKey) private var plainFade = false
     @State private var confirmsSignOut = false
     @State private var signOutError: String?
@@ -67,6 +69,21 @@ struct AccountSettingsSheet: View {
                     }
                     .tint(.green)
                     .disabled(!showsSessionList)
+                    Toggle(isOn: $rememberSidebarState) {
+                        // 记住分栏侧栏上次开合，启动恢复——优先级高于
+                        // 「启动时展开侧栏」（开启时该选项置灰）。
+                        Label(String(localized: "侧栏状态记忆"), appSymbol: "sidebar.left")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .tint(.green)
+                    Toggle(isOn: $openSidebarOnLaunch) {
+                        // 仅分栏形态（iPad / Duo 内屏）的启动默认；抽屉
+                        // 形态恒闭合启动。改动下次启动生效。
+                        Label(String(localized: "启动时展开侧栏"), appSymbol: "sidebar.left")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .tint(.green)
+                    .disabled(rememberSidebarState)
                 }
                 revealAnimationSection
                 Section(String(localized: "Workspace")) {

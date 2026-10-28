@@ -6,7 +6,20 @@ struct ChatShellView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    @State private var sidebar = ChatSidebarState()
+    /// 「侧栏状态记忆」（优先级高于启动默认）：开启时启动恢复上次
+    /// 分栏侧栏开合状态。
+    @AppStorage(ChatSidebarState.rememberStateDefaultsKey) private var rememberSidebarState = false
+
+    // 启动默认：记忆开启且有快照 → 上次状态；否则「启动时展开侧栏」。
+    // 仅影响分栏形态的初始态。
+    @State private var sidebar = ChatSidebarState(defaultOpen: {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: ChatSidebarState.rememberStateDefaultsKey),
+           defaults.object(forKey: ChatSidebarState.lastOpenDefaultsKey) is Bool {
+            return defaults.bool(forKey: ChatSidebarState.lastOpenDefaultsKey)
+        }
+        return defaults.object(forKey: ChatSidebarState.openOnLaunchDefaultsKey) as? Bool ?? true
+    }())
     @State private var newSessionPresentationID = UUID()
     /// 会话页/新会话页 composer 玻璃共享的 namespace：detail 切换时同 ID
     /// glass 做 matched 过渡，避免新页 glass 单独"泡泡式"出现（Duo 横屏
@@ -39,6 +52,18 @@ struct ChatShellView: View {
             }
         }
         .onChange(of: layout, initial: true) { _, next in sidebar.setLayout(next) }
+        // 侧栏状态记忆：分栏形态下开合变化即时快照（含开关刚打开时
+        // 立即落当前值，避免"开启记忆后首启仍用默认"的空窗）。
+        .onChange(of: sidebar.isOpen) { _, isOpen in
+            if rememberSidebarState, sidebar.layout == .regularSplit {
+                UserDefaults.standard.set(isOpen, forKey: ChatSidebarState.lastOpenDefaultsKey)
+            }
+        }
+        .onChange(of: rememberSidebarState) { _, remember in
+            if remember, sidebar.layout == .regularSplit {
+                UserDefaults.standard.set(sidebar.isOpen, forKey: ChatSidebarState.lastOpenDefaultsKey)
+            }
+        }
         .task(id: NewSessionLoadKey(target: appState.nativeChatServices?.newSession.refreshKey,
             presentationID: newSessionPresentationID)) {
             // Warm the next draft even when launch restores a session/device.
