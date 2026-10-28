@@ -377,7 +377,8 @@ struct ChatOverflowAction: Identifiable {
 width）。已知的取舍：内屏聊天列全宽（2200 上限）违背 Rule 21"更宽≠
 更长文本行"，是用户决策"折叠屏铺满"。审计其余全合规（无 UIScreen/
 orientation/自定义 bar；adaptive grid、ViewThatFits、可读上限、系统
-容器齐全）。sheets 36 处未设 presentationPlacement，半折叠姿态待抽查。
+容器齐全）。sheets 36 处未设 presentationPlacement——2026-10-28 真机
+半折叠姿态抽查通过，系统默认落位合理，无需逐处补设。
 
 ## 侧栏启动设置契约（2026-10-28，fa61170f 单测锚定）
 
