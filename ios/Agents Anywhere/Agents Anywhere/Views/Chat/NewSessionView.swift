@@ -89,7 +89,7 @@ struct NewSessionView: View, Equatable {
                 // 无图标，2026-10-28）。
                 pageTrailing: [],
                 overflowActions: deviceOverflowActions + [
-                    ChatOverflowAction(title: String(localized: "浏览文件"), isDisabled: !canBrowse) { showsFiles = true }
+                    ChatOverflowAction(title: String(localized: "浏览文件"), systemImage: "folder", isDisabled: !canBrowse) { showsFiles = true }
                 ]))
         }
         .sheet(isPresented: $showsTarget) {
@@ -158,13 +158,13 @@ struct NewSessionView: View, Equatable {
     /// 设备菜单动作，直接平铺进系统 "…" 溢出菜单。
     private var deviceOverflowActions: [ChatOverflowAction] {
         [
-            ChatOverflowAction(title: String(localized: "选择设备和 Agent")) { chooseTarget() },
-            ChatOverflowAction(title: String(localized: "选择工作目录"),
+            ChatOverflowAction(title: String(localized: "选择设备和 Agent"), systemImage: "sparkles") { chooseTarget() },
+            ChatOverflowAction(title: String(localized: "选择工作目录"), systemImage: "folder",
                 isDisabled: model.connector == nil) { showsWorkspace = true }
         ] + (model.connector.map { device in
             [
-                ChatOverflowAction(title: String(localized: "设备详情")) { onOpenDevice(device.id) },
-                ChatOverflowAction(title: String(localized: "Copy device ID")) { UIPasteboard.general.string = device.id }
+                ChatOverflowAction(title: String(localized: "设备详情"), systemImage: "info.circle") { onOpenDevice(device.id) },
+                ChatOverflowAction(title: String(localized: "Copy device ID"), systemImage: "doc.on.doc") { UIPasteboard.general.string = device.id }
             ]
         } ?? [])
     }

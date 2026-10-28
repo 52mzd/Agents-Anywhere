@@ -72,6 +72,9 @@ func chatRailButtons(_ rail: ChatRailContext) -> [ChatRailButton] {
 struct ChatOverflowAction: Identifiable {
     let id = UUID()
     let title: String
+    /// SF Symbol：溢出菜单行左侧图标（上游原 ellipsis 菜单都有，丢了会
+    /// 显得功能"消失"了 2026-10-29 用户反馈）。
+    var systemImage: String? = nil
     var isDisabled = false
     /// 危险动作（如删除设备）：菜单行红字（等价 Button role: .destructive）。
     var isDestructive = false
@@ -127,9 +130,15 @@ struct ChatPageToolbar: ViewModifier {
                     if #available(iOS 27.0, *) {
                         ToolbarOverflowMenu {
                             ForEach(overflowActions) { action in
-                                Button(action.title, role: action.isDestructive ? .destructive : nil,
-                                    action: action.handler)
-                                    .disabled(action.isDisabled)
+                                Button(role: action.isDestructive ? .destructive : nil,
+                                    action: action.handler) {
+                                    if let systemImage = action.systemImage {
+                                        Label(action.title, systemImage: systemImage)
+                                    } else {
+                                        Text(action.title)
+                                    }
+                                }
+                                .disabled(action.isDisabled)
                             }
                         }
                     }

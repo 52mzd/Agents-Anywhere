@@ -103,11 +103,11 @@ struct DeviceManagementView: View {
             // 原 ellipsis 设备菜单动作平铺进系统"…"（同其他页，消除
             // 自造"…"菜单）。
             overflowActions: [
-                ChatOverflowAction(title: String(localized: "New session")) { onNewSession(nil) },
-                ChatOverflowAction(title: String(localized: "Copy device ID")) { UIPasteboard.general.string = connector.id },
-                ChatOverflowAction(title: String(localized: "Rename device"), isDisabled: !canManage) { proposedName = connector.name; isRenaming = true },
-                ChatOverflowAction(title: String(localized: "Rotate credential"), isDisabled: !canManage) { confirmsRotation = true },
-                ChatOverflowAction(title: String(localized: "Delete device"), isDisabled: !canManage, isDestructive: true) { confirmsDeletion = true }
+                ChatOverflowAction(title: String(localized: "New session"), systemImage: "square.and.pencil") { onNewSession(nil) },
+                ChatOverflowAction(title: String(localized: "Copy device ID"), systemImage: "doc.on.doc") { UIPasteboard.general.string = connector.id },
+                ChatOverflowAction(title: String(localized: "Rename device"), systemImage: "pencil", isDisabled: !canManage) { proposedName = connector.name; isRenaming = true },
+                ChatOverflowAction(title: String(localized: "Rotate credential"), systemImage: "key", isDisabled: !canManage) { confirmsRotation = true },
+                ChatOverflowAction(title: String(localized: "Delete device"), systemImage: "trash", isDisabled: !canManage, isDestructive: true) { confirmsDeletion = true }
             ]))
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if model.isSelectingSessions {

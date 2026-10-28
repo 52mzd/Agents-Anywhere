@@ -107,10 +107,10 @@ struct SessionChatView: View, Equatable {
             // folder 同样走纯文字溢出行（同 NewSessionView 注释）。
             pageTrailing: [],
             overflowActions: [
-                ChatOverflowAction(title: String(localized: "文件管理"),
+                ChatOverflowAction(title: String(localized: "文件管理"), systemImage: "folder",
                     isDisabled: session.metadata?.cwd?.isEmpty != false) { sheet = .files },
-                ChatOverflowAction(title: String(localized: "会话详情与导出")) { sheet = .details },
-                ChatOverflowAction(title: String(localized: "复制会话 ID")) { UIPasteboard.general.string = session.id }
+                ChatOverflowAction(title: String(localized: "会话详情与导出"), systemImage: "info.circle") { sheet = .details },
+                ChatOverflowAction(title: String(localized: "复制会话 ID"), systemImage: "number") { UIPasteboard.general.string = session.id }
             ]))
         .modifier(SessionTakeoverConfirmation(pending: $pendingTakeover, isDsh: model.isDsh) { enabled in
             model.error = nil
