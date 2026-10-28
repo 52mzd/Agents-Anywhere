@@ -7,6 +7,21 @@ import Testing
         #expect(ChatSidebarState.Layout.resolve(hasRegularWidth: false) == .drawer)
     }
 
+    @Test func launchDefaultControlsTheInitialSplitState() {
+        // 设置项「启动时展开侧栏」：defaultOpen=false 时分栏闭合启动。
+        var closedByDefault = ChatSidebarState(defaultOpen: false)
+        closedByDefault.setLayout(.regularSplit)
+        #expect(!closedByDefault.isOpen)
+        // 抽屉形态不受启动默认影响，恒闭合启动。
+        var drawer = ChatSidebarState(defaultOpen: true)
+        drawer.setLayout(.drawer)
+        #expect(!drawer.isOpen)
+        // 显式开合不被后续 setLayout 同值调用重置。
+        closedByDefault.isOpen = true
+        closedByDefault.setLayout(.regularSplit)
+        #expect(closedByDefault.isOpen)
+    }
+
     @Test func regularSplitStartsOpenAndNavigationKeepsBothColumnsVisible() {
         var sidebar = ChatSidebarState()
         sidebar.setLayout(.regularSplit)
