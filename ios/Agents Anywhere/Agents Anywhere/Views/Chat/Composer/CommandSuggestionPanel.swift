@@ -7,7 +7,14 @@ struct CommandSuggestionPanel: View {
     let chat: SessionChatModel
     @Bindable var draft: ComposerDraft
     @Binding var forced: Bool
+    /// 浮层列表的高度上限：矮空间（横屏+键盘）由调用方按
+    /// "可视高度 − 输入栏 − 标题行"扣减给出，富余时封顶 240。
+    var listMaxHeight: CGFloat = 240
     @State private var dismissedFor: String?
+    /// 标题行拖拽跟手位移：松手超过阈值 = 收起键盘（等价收起按钮）。
+    /// 手势必须用全局坐标系——默认 .local 随视图自身位移抖动 translation，
+    /// 是上一轮跟手实现上下震荡的根底。
+    @State private var headerDragOffset: CGFloat = 0
 
     private var slashQuery: String? {
         guard let intent = SlashIntent(draft.text), intent.isCommandLike, intent.suffix.isEmpty, !intent.multiline else { return nil }
@@ -27,24 +34,60 @@ struct CommandSuggestionPanel: View {
     var body: some View {
         if isVisible {
             VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Text(String(localized: "指令")).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { if forced { forced = false } else { dismissedFor = draft.text } } label: {
-                        AppSymbol("xmark", size: 11).frame(width: 36, height: 36)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(localized: "关闭"))
-                }
-                .padding(.leading, 16).padding(.trailing, 4)
+                header
                 content
             }
             .padding(.bottom, 8)
             .glassEffect(.regular, in: .rect(cornerRadius: 22))
             .padding(.horizontal, draft.isExpanded ? ChatControlMetrics.expandedHorizontalInset : ChatControlMetrics.collapsedHorizontalInset)
+            .transformEffect(CGAffineTransform(translationX: 0, y: headerDragOffset))
             .transition(.opacity)
             .task(id: chat.canUseCommands) { await chat.loadCommands() }
         }
+    }
+
+    private var header: some View {
+        HStack {
+            Text(String(localized: "指令")).font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+            Spacer()
+            Button { if forced { forced = false } else { dismissedFor = draft.text } } label: {
+                AppSymbol("xmark", size: 11).frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "关闭"))
+        }
+        .padding(.leading, 16).padding(.trailing, 4)
+        // Spacer 的透明区域默认不参与手势命中，拖拽会缩到左上角
+        // 文字处；contentShape 让整条标题行（含中间空白）都可拖。
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 12, coordinateSpace: .global)
+            .onChanged { value in
+                headerDragOffset = max(0, value.translation.height)
+            }
+            .onEnded { value in
+                let commit = value.translation.height > 80
+                    || value.predictedEndTranslation.height > 130
+                if commit {
+                    // 瞬时归零，位移交给键盘收起的一次布局动画；
+                    // 与 offset 回位动画叠加会互相拉扯。
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { headerDragOffset = 0 }
+                    // 键盘开着：下拖收键盘、面板保留；键盘没开
+                    // （⌘ 强制展开）：没键盘可收，下拖就是关面板。
+                    if draft.isFocused {
+                        draft.isFocused = false
+                    } else if forced {
+                        forced = false
+                    } else {
+                        dismissedFor = draft.text
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        headerDragOffset = 0
+                    }
+                }
+            })
     }
 
     @ViewBuilder private var content: some View {
@@ -70,7 +113,7 @@ struct CommandSuggestionPanel: View {
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
-            .frame(maxHeight: 240)
+            .frame(maxHeight: listMaxHeight)
             .fixedSize(horizontal: false, vertical: true)
         }
     }

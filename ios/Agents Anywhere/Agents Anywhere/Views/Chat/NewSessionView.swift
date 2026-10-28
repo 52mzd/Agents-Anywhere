@@ -16,6 +16,7 @@ struct NewSessionView: View, Equatable {
     @State private var showsWorkspace = false
     @State private var showsFiles = false
     @Environment(AppState.self) private var appState
+    @Environment(\.chatRail) private var chatRail
     @State private var confirmsRetry = false
     @AppStorage(ProjectSidebarPreferences.sessionListKey) private var showsSessionList = false
     @ScaledMetric(relativeTo: .body) private var bodyLineHeight: CGFloat = 22
@@ -57,7 +58,10 @@ struct NewSessionView: View, Equatable {
                         .padding(.leading, 6)
                         .padding(.bottom, 6)
                 ChatComposerDock(draft: model.draft, settings: model.settings,
-                    maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)), controls: controls,
+                    // 上游同款：随内容增高（本屏 ~2 行封顶），超上限
+                    // 内部滚动。半折叠单行方案已弃（盖按钮、光标出视野）。
+                    maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)),
+                    controls: controls,
                     canSend: model.canCreate, canAttach: model.canAttach && model.prepared != nil,
                     canSelectModel: model.prepared?.capabilities.allows("catalog.model") == true,
                     canSelectPermission: model.prepared?.capabilities.allows("catalog.permission") == true,
@@ -68,16 +72,25 @@ struct NewSessionView: View, Equatable {
                 }
                 .frame(maxWidth: ChatControlMetrics.maximumContentWidth).frame(maxWidth: .infinity)
             }
-        }
-        .modifier(ChatPageToolbar(title: "", onMenu: onMenu))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showsFiles = true } label: { AppSymbol("folder") }
-                    .disabled(!canBrowse)
-                    .accessibilityLabel(String(localized: "浏览文件"))
-                    .accessibilityIdentifier("chat.new.files")
-            }
-            ToolbarItem(placement: .topBarTrailing) { deviceMenu }
+            // "…"图标无条件恒定：ellipsis↔spinner 切换在 Duo 横屏宽 detail
+            // 下触发系统 glass 重排，spinner 错位放大成大圆闪现（真机定位，
+            // 2026-10-27；宽度条件判断两版均有漏网帧，放弃条件化）。
+            // isPreparing 反馈统一放导航栏 status 槽（原位 mini 转圈）。
+            // 右缘竖排按钮经页面级注入（shell 级 toolbar 项不进竖排）。
+            .modifier(ChatPageToolbar(title: "",
+                status: model.isPreparing ? .preparing : nil, onMenu: onMenu,
+                railTrailing: chatRail.map { chatRailButtons($0) } ?? [],
+                // folder Label 形式（竖排显图标、溢出菜单显标题）。
+                // 原 ellipsis 设备菜单的 4 个动作直接进系统 "…" 溢出
+                // 菜单（官方 ToolbarOverflowMenu）——避免"…"里再套"…"，
+                // 一次点击直达（用户要求 2026-10-28）。
+                // folder 也走溢出菜单（纯文字行）：Label 栏项溢出后
+                // 菜单行带图标，与纯文字动作混排不一致（用户要求统一
+                // 无图标，2026-10-28）。
+                pageTrailing: [],
+                overflowActions: deviceOverflowActions + [
+                    ChatOverflowAction(title: String(localized: "浏览文件"), isDisabled: !canBrowse) { showsFiles = true }
+                ]))
         }
         .sheet(isPresented: $showsTarget) {
             SessionTargetSheet(model: model)
@@ -142,24 +155,20 @@ struct NewSessionView: View, Equatable {
         .disabled(model.connector == nil || model.isCreating)
     }
 
-    private var deviceMenu: some View {
-        // Menu rows use SF Symbols like the rest of the system menu.
-        Menu {
-            Button(String(localized: "选择设备和 Agent"), systemImage: "sparkles") { chooseTarget() }
-            Button(String(localized: "选择工作目录"), systemImage: "folder") { showsWorkspace = true }
-                .disabled(model.connector == nil)
-            if let device = model.connector {
-                Divider()
-                Button(String(localized: "设备详情"), systemImage: "info.circle") { onOpenDevice(device.id) }
-                Button(String(localized: "Copy device ID"), systemImage: "doc.on.doc") { UIPasteboard.general.string = device.id }
-            }
-        } label: {
-            if model.isPreparing { ProgressView().controlSize(.mini) } else { AppSymbol("ellipsis") }
-        }
-        .disabled(model.isCreating)
-        .accessibilityLabel(String(localized: "Device actions"))
-        .accessibilityIdentifier("chat.new.target")
+    /// 设备菜单动作，直接平铺进系统 "…" 溢出菜单。
+    private var deviceOverflowActions: [ChatOverflowAction] {
+        [
+            ChatOverflowAction(title: String(localized: "选择设备和 Agent")) { chooseTarget() },
+            ChatOverflowAction(title: String(localized: "选择工作目录"),
+                isDisabled: model.connector == nil) { showsWorkspace = true }
+        ] + (model.connector.map { device in
+            [
+                ChatOverflowAction(title: String(localized: "设备详情")) { onOpenDevice(device.id) },
+                ChatOverflowAction(title: String(localized: "Copy device ID")) { UIPasteboard.general.string = device.id }
+            ]
+        } ?? [])
     }
+
 
     private var canBrowse: Bool {
         model.connector?.status == .online && model.network.availability != .offline && model.isValid && !model.isCreating

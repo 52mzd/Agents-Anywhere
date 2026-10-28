@@ -6,8 +6,26 @@ struct ChatShellView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    @State private var sidebar = ChatSidebarState()
+    /// 「侧栏状态记忆」（优先级高于启动默认）：开启时启动恢复上次
+    /// 分栏侧栏开合状态。
+    @AppStorage(ChatSidebarState.rememberStateDefaultsKey) private var rememberSidebarState = false
+
+    // 启动默认：记忆开启且有快照 → 上次状态；否则「启动时展开侧栏」。
+    // 仅影响分栏形态的初始态。
+    @State private var sidebar = ChatSidebarState(defaultOpen: {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: ChatSidebarState.rememberStateDefaultsKey),
+           defaults.object(forKey: ChatSidebarState.lastOpenDefaultsKey) is Bool {
+            return defaults.bool(forKey: ChatSidebarState.lastOpenDefaultsKey)
+        }
+        return defaults.object(forKey: ChatSidebarState.openOnLaunchDefaultsKey) as? Bool ?? true
+    }())
     @State private var newSessionPresentationID = UUID()
+    /// 会话页/新会话页 composer 玻璃共享的 namespace：detail 切换时同 ID
+    /// glass 做 matched 过渡，避免新页 glass 单独"泡泡式"出现（Duo 横屏
+    /// 宽 detail 下肉眼可见的大圆闪现）。
+    @Namespace private var composerGlass
+    @State private var showsRailAccountSettings = false
     private var selection: ChatShellSelection {
         get { appState.chatSelection }
         nonmutating set { appState.chatSelection = newValue }
@@ -34,6 +52,18 @@ struct ChatShellView: View {
             }
         }
         .onChange(of: layout, initial: true) { _, next in sidebar.setLayout(next) }
+        // 侧栏状态记忆：分栏形态下开合变化即时快照（含开关刚打开时
+        // 立即落当前值，避免"开启记忆后首启仍用默认"的空窗）。
+        .onChange(of: sidebar.isOpen) { _, isOpen in
+            if rememberSidebarState, sidebar.layout == .regularSplit {
+                UserDefaults.standard.set(isOpen, forKey: ChatSidebarState.lastOpenDefaultsKey)
+            }
+        }
+        .onChange(of: rememberSidebarState) { _, remember in
+            if remember, sidebar.layout == .regularSplit {
+                UserDefaults.standard.set(sidebar.isOpen, forKey: ChatSidebarState.lastOpenDefaultsKey)
+            }
+        }
         .task(id: NewSessionLoadKey(target: appState.nativeChatServices?.newSession.refreshKey,
             presentationID: newSessionPresentationID)) {
             // Warm the next draft even when launch restores a session/device.
@@ -81,6 +111,44 @@ struct ChatShellView: View {
         return ChatSidebarAccount(me: me, avatarSource: appState.accountAvatarSource)
     }
 
+    /// 右缘竖排头像的像素层缓存：source 变化时在 onChange（body 求值外）
+    /// 重渲染，body 高频重算只读缓存。
+    @State private var railAvatarCache: (source: AccountAvatarImageSource, image: UIImage)?
+
+    /// 右缘竖排的真实头像（读缓存）；remote/无图走 symbol。竖排容器只收
+    /// 零修饰 label——显示原始尺寸，裁剪/缩放必须在图片像素层完成
+    ///（居中裁方 + 圆形蒙版，38pt 对齐侧栏头像视觉）。
+    private var railAvatarImage: UIImage? {
+        guard let source = appState.accountAvatarSource,
+              let cache = railAvatarCache, cache.source == source else { return nil }
+        return cache.image
+    }
+
+    /// 渲染竖排头像（onChange 驱动，不在 body 求值内写 state）。
+    private func updateRailAvatar() {
+        guard let source = appState.accountAvatarSource,
+              railAvatarCache?.source != source else { return }
+        guard case let .data(data) = source,
+              let image = AccountAvatarImageCache.image(for: data) else {
+            railAvatarCache = nil
+            return
+        }
+        let shortest = min(image.size.width, image.size.height)
+        let cropRect = CGRect(x: (image.size.width - shortest) / 2,
+                              y: (image.size.height - shortest) / 2, width: shortest, height: shortest)
+        guard let cropped = image.cgImage?.cropping(to: cropRect) else { return }
+        // scale=3：points 的 3x 像素。scale=1 会把像素数当成 pt 渲染
+        //——竖排里巨大（真机实证）。
+        let points = 38 as CGFloat
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 3
+        railAvatarCache = (source, UIGraphicsImageRenderer(size: CGSize(width: points, height: points), format: format).image { _ in
+            let rect = CGRect(x: 0, y: 0, width: points, height: points)
+            UIBezierPath(ovalIn: rect).addClip()
+            UIImage(cgImage: cropped).draw(in: rect)
+        })
+    }
+
     private var sidebarSessions: [ChatSidebarSession] {
         appState.sessions
             .filter { !$0.archived }
@@ -103,7 +171,10 @@ struct ChatShellView: View {
             presentation: layout == .regularSplit ? .nativeSidebar : .drawer,
             configuration: .chat
         ) { _ in
+            // 侧栏头部（新会话/头像）不随键盘避让上移：键盘是 detail 列
+            // 输入框的事，侧栏顶上来只会挤走会话列表空间。
             ChatSidebarHeaderView()
+                .ignoresSafeArea(.keyboard)
         } sidebar: { safeAreaInsets in
             ChatSidebarView(
                 appState: appState,
@@ -116,6 +187,10 @@ struct ChatShellView: View {
                 onNewProjectSession: startProjectSession,
                 onRestoreSession: { await appState.setSessionArchived(sessionId: $0, archived: false) },
                 account: sidebarAccount,
+                // 宽 detail（Duo 横屏）新会话/头像移到右缘竖排 toolbar，
+                // 侧栏底栏清空不重复。
+                // Duo 内屏横竖屏都走 toolbar（同套逻辑），侧栏底栏恒空。
+                showsBottomControls: !isDuoFoldableIPhone,
                 selectedDeviceId: selectedDeviceId,
                 selectedSessionId: selectedSessionId,
                 isLoadingDevices: appState.isDashboardLoading && !appState.hasLoadedConnectors,
@@ -129,9 +204,32 @@ struct ChatShellView: View {
                 onCopyDeviceId: copyDeviceId,
                 onCopySessionId: copySessionId
             )
+            // 直板抽屉形态的防御层：弹键盘后展开侧栏的转场中，键盘
+            // safe area 变化与 ScrollView 布局可能互相触发循环（真机
+            // 曾剧烈抖动）。根因已在 NativeComposerEditor（异步焦点块
+            // 改读实时意图），此挂载保留双保险；底栏随键盘上移在抽屉
+            // 形态留作遗留（insets 是 GeometryReader 参数污染，修在
+            // 内容层无效）。
+            .ignoresSafeArea(.keyboard)
         } content: { safeAreaInsets in
             mainContent
                 .modifier(ChatDetailNavigation(insets: safeAreaInsets))
+                .environment(\.composerGlassNamespace, composerGlass)
+                // Duo 内屏两个方向都注入（用户决策 2026-10-28：竖屏
+                // 遵循横排同一套逻辑）——横排系统重排成右缘竖排、竖排
+                // 落顶部导航栏，placement 恒为 topBarTrailing 由系统
+                // 自行分派。注入恒定、结构恒定：键盘期增删/切换会在
+                // 键盘收起后丢按钮（真机实证 2026-10-28 两轮）。
+                .environment(\.chatRail, isDuoFoldableIPhone ? ChatRailContext(
+                    onNewSession: startNewSession,
+                    onAccount: { showsRailAccountSettings = true },
+                    avatarImage: railAvatarImage) : nil)
+                .onChange(of: appState.accountAvatarSource, initial: true) { _, _ in
+                    updateRailAvatar()
+                }
+                .sheet(isPresented: $showsRailAccountSettings) {
+                    AccountSettingsSheet(appState: appState)
+                }
         }
     }
 
@@ -249,6 +347,10 @@ struct ChatShellView: View {
     private func startNewSession() {
         // Reselecting this destination must also remount its local presentation
         // state, including the welcome reveal. The account still owns the draft.
+        // 共享 draft 会把上一页的聚焦状态带进新页：异步焦点块随后弹起
+        // 键盘又收起，横屏下像底部闪现一个大玻璃圆（真机报告）。
+        // 进新会话页不继承焦点，键盘不弹。
+        appState.nativeChatServices?.newSession.draft.isFocused = false
         newSessionPresentationID = UUID()
         selection = .newSession
         sidebar.selectDestination()
@@ -335,3 +437,9 @@ private struct ChatShellPlaceholderPage: View {
         .environment(AppState())
         .preferredColorScheme(.dark)
 }
+
+/// 禁止系统 toolbar 折叠（右缘竖排被键盘折叠成死"…"）。iOS 27+ API，
+/// 26 上原样返回（默认行为）。
+
+
+

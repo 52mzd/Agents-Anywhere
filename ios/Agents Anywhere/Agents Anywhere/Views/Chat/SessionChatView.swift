@@ -22,6 +22,7 @@ struct SessionChatView: View, Equatable {
     @State private var pendingTakeover: Bool?
     @State private var hasStartedLoading = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.chatRail) private var chatRail
     @ScaledMetric(relativeTo: .body) private var bodyLineHeight: CGFloat = 22
     @ScaledMetric(relativeTo: .footnote) private var takeoverPillHeight: CGFloat = 32
 
@@ -72,18 +73,7 @@ struct SessionChatView: View, Equatable {
                         SessionInteractionDock(chat: model,
                             onShowAll: { expandedNoticeID = $0; sheet = .notices })
                             .traceChatLayout("interaction-dock")
-                        ChatComposerDock(draft: session.composer, settings: model.settings,
-                            maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)), controls: controls,
-                            canSend: session.canSend, canAttach: model.canAttach,
-                            canSelectModel: session.runtime.allows("catalog.model"),
-                            canSelectPermission: session.runtime.allows("catalog.permission"),
-                            isStreaming: model.isRunning, canStop: session.runtime.allows("session.interrupt"),
-                            isBusy: model.isWorking || !model.isOpeningReady, placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
-                            isLoadingSettings: model.isLoadingSettings,
-                            settingsError: model.settingsError, sessionChat: model,
-                            onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
-                            onApplySettings: model.applySettings, applyError: { model.settingsError },
-                            onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })
+                        composerDock(geometry: geometry)
                             .traceChatLayout("composer-dock")
                     }
                     .frame(maxWidth: ChatControlMetrics.maximumContentWidth).frame(maxWidth: .infinity)
@@ -108,19 +98,20 @@ struct SessionChatView: View, Equatable {
         .modifier(ChatPageToolbar(title: session.metadata?.title ?? String(localized: "会话"),
             subtitle: [session.metadata?.runtimeName ?? session.metadata?.runtime ?? String(localized: "Agent"),
                 deviceName ?? session.metadata?.connectorId].compactMap { $0 }.joined(separator: " · "),
-            status: model.headerStatus, alignsTitleLeading: true, onMenu: onMenu))
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button { sheet = .files } label: { AppSymbol("folder") }
-                    .accessibilityLabel(String(localized: "文件管理"))
-                    .disabled(session.metadata?.cwd?.isEmpty != false)
-                Menu {
-                    Button(String(localized: "会话详情与导出"), systemImage: "info.circle") { sheet = .details }
-                    Button(String(localized: "复制会话 ID"), systemImage: "number") { UIPasteboard.general.string = session.id }
-                } label: { AppSymbol("ellipsis") }
-                .accessibilityLabel(String(localized: "会话菜单"))
-            }
-        }
+            status: model.headerStatus, alignsTitleLeading: true, onMenu: onMenu,
+            // 右缘竖排按钮经页面级注入（shell 级 toolbar 项不进竖排）。
+            railTrailing: chatRail.map { chatRailButtons($0) } ?? [],
+            // folder 留竖排（Label 形式：竖排显图标、溢出菜单显标题）；
+            // 原 ellipsis 菜单动作直接进系统 "…" 溢出菜单（官方
+            // ToolbarOverflowMenu，消除"…"套"…"）。
+            // folder 同样走纯文字溢出行（同 NewSessionView 注释）。
+            pageTrailing: [],
+            overflowActions: [
+                ChatOverflowAction(title: String(localized: "文件管理"),
+                    isDisabled: session.metadata?.cwd?.isEmpty != false) { sheet = .files },
+                ChatOverflowAction(title: String(localized: "会话详情与导出")) { sheet = .details },
+                ChatOverflowAction(title: String(localized: "复制会话 ID")) { UIPasteboard.general.string = session.id }
+            ]))
         .modifier(SessionTakeoverConfirmation(pending: $pendingTakeover, isDsh: model.isDsh) { enabled in
             model.error = nil
             if !(await model.setTakeover(enabled)), let error = model.takeoverError { model.error = error }
@@ -188,6 +179,27 @@ struct SessionChatView: View, Equatable {
         .onChange(of: model.openingError, initial: true) { _, message in
             toasts.update(source: "opening", failure: message.map { V2ClientFailure(kind: .unavailable, message: $0) })
         }
+    }
+
+    /// Body 内联这一长串参数会让 Swift 类型检查超时（实测），拆方法。
+    private func composerDock(geometry: GeometryProxy) -> ChatComposerDock {
+        ChatComposerDock(draft: session.composer, settings: model.settings,
+            // 上游同款：随内容增高（本屏 ~2 行封顶），超上限内部滚动。
+            // 半折叠单行方案已弃（盖按钮、光标出视野）。
+            maximumEditorHeight: min(160, max(72, geometry.size.height * 0.30)),
+            controls: controls,
+            canSend: session.canSend, canAttach: model.canAttach,
+            canSelectModel: session.runtime.allows("catalog.model"),
+            canSelectPermission: session.runtime.allows("catalog.permission"),
+            isStreaming: model.isRunning, canStop: session.runtime.allows("session.interrupt"),
+            isBusy: model.isWorking || !model.isOpeningReady,
+            placeholder: requiresTakeover ? String(localized: "请先接管") : String(localized: "询问 Agents"),
+            isLoadingSettings: model.isLoadingSettings,
+            settingsError: model.settingsError, sessionChat: model,
+            availableHeight: geometry.size.height,
+            onSend: model.send, onStop: model.interrupt, onLoadSettings: model.loadSettings,
+            onApplySettings: model.applySettings, applyError: { model.settingsError },
+            onDraftChange: { model.repository.draftDidChange(sessionID: model.session.id) })
     }
 
     private var openingMask: some View {

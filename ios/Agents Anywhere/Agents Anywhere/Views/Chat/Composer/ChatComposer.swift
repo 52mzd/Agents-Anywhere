@@ -1,5 +1,20 @@
 import SwiftUI
 
+/// 跨页共享 composer 玻璃的 namespace：detail 切换（会话→新会话）时两页
+/// composer 若各自持有 namespace，新页 glass "从无到有"的 Liquid Glass
+/// 出现动画在 Duo 横屏宽 detail 下闪现大圆泡泡（2026-10-27 真机定位，
+/// 圈出现在底部输入区；竖屏 NavigationStack 有 push 过渡掩盖、15PM
+/// 横屏 detail 窄泡泡不明显）。共享后同 ID glass 做 matched 过渡。
+private struct ComposerGlassNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+extension EnvironmentValues {
+    var composerGlassNamespace: Namespace.ID? {
+        get { self[ComposerGlassNamespaceKey.self] }
+        set { self[ComposerGlassNamespaceKey.self] = newValue }
+    }
+}
+
 struct ChatComposer: View {
     @Bindable var draft: ComposerDraft
     let editor: ComposerEditorController
@@ -22,13 +37,19 @@ struct ChatComposer: View {
     var onDraftChange: () -> Void = {}
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.composerGlassNamespace) private var sharedGlass
     @Namespace private var glass
 
     var body: some View {
         GlassEffectContainer(spacing: 12) {
             VStack(spacing: 0) {
                 if !draft.attachments.isEmpty { attachmentTray }
-                ComposerLayout(expanded: draft.isExpanded, maximumEditorHeight: maximumEditorHeight, controls: controls) {
+                // 上游同款行为：随内容增高，超上限后 sizeThatFits 切回
+                // isScrollEnabled=true 由系统接管滚动与光标跟随。曾试过
+                // Duo 全域 collapsed + 手动 setContentOffset 光标跟随，
+                // 真机上第三行起布局溢出盖按钮，回归上游（2026-10-28）。
+                ComposerLayout(expanded: draft.isExpanded,
+                    maximumEditorHeight: maximumEditorHeight, controls: controls) {
                     Button(action: onOptions) {
                         AppSymbol("plus", size: 24)
                             .frame(width: controls.touchTarget, height: controls.touchTarget)
@@ -76,10 +97,32 @@ struct ChatComposer: View {
                         .accessibilityAddTraits(commandsActive ? .isSelected : [])
                         .accessibilityIdentifier("chat.composer.commands")
                     }
+                    // 聚焦时显示收起键盘：放在指令图标左侧（紧邻发送键易误触）。
+                    // systemName 在本项目环境不渲染（全仓无先例），用 AppSymbol 资产。
+                    if draft.isFocused {
+                        Button {
+                            // 直接 resign：只写 draft.isFocused 走 updateUIView
+                            // 异步收起链，输入过文字后真机上竞态失效（键盘
+                            // 不落）。同步 resign 出自按钮事件上下文，安全。
+                            editor.finishEditing()
+                        } label: {
+                            // systemName 在本项目环境不渲染（全仓无先例，
+                            // 两轮实测空白），统一用 AppSymbol 资产图标。
+                            AppSymbol("chevron.down", size: 15)
+                                .foregroundStyle(.secondary)
+                                .frame(width: controls.touchTarget, height: controls.touchTarget)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "收起键盘"))
+                        .accessibilityIdentifier("chat.composer.dismissKeyboard")
+                    }
                 }
             }
             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: draft.isExpanded ? controls.expandedCornerRadius : controls.collapsedCornerRadius))
-            .glassEffectID("composer", in: glass)
+            // 页面祖先（ChatShellView）注入共享 namespace 时用共享值：跨页
+            // 切换做同 ID matched 过渡，避免新页 glass 单独"泡泡式"出现。
+            .glassEffectID("composer", in: sharedGlass ?? glass)
         }
         .padding(.horizontal, draft.isExpanded ? ChatControlMetrics.expandedHorizontalInset : ChatControlMetrics.collapsedHorizontalInset)
         .padding(.top, 8)

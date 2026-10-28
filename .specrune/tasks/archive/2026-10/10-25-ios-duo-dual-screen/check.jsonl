@@ -1,0 +1,4 @@
+{"file":"research-duo-api.md","reason":"验收时对照 Apple 双屏布局规则（折叠带避让、回退路径）"}
+{"file":".specrune/spec/ios/guidelines.md","reason":"iOS 层规范"}
+{"file":"research-duo-report.md","reason":"验收对照调研报告中的 Apple 布局规则与未验证项"}
+{"file":".specrune/spec/ios/duo-layout.md","reason":"iOS 布局规范"}

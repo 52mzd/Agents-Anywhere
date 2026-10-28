@@ -390,14 +390,21 @@ def command_result(value: Any, command: str) -> RuntimeCommandResult:
     ):
         raise ValueError("An uncertain DSH command may not be retried automatically")
     if ok:
-        if (
-            kind != "success"
-            or command_id is None
-            or state != "accepted"
-            or "retryable" in result
-            or "code" in data
-        ):
-            raise ValueError("DSH successful command acknowledgement is incomplete or inconsistent")
+        # Name the offending field: a generic message downgrades to the same
+        # "outcome unknown" string the TS bridge and server emit, hiding which
+        # layer and field actually broke the ack contract (2026-10-28 /compact
+        # incident, .specrune/spec/connector/runtime-commands.md).
+        problems = [
+            name for name, bad in (
+                ("kind must be 'success'", kind != "success"),
+                ("commandId must be a non-empty string", command_id is None),
+                ("executionState must be 'accepted'", state != "accepted"),
+                ("retryable must be absent", "retryable" in result),
+                ("top-level code must be absent", "code" in data),
+            ) if bad
+        ]
+        if problems:
+            raise ValueError(f"DSH successful command acknowledgement is invalid: {'; '.join(problems)}")
     elif (
         kind == "success"
         or kind == "error" and (command_id is None or state != "completed")

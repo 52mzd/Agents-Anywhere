@@ -25,6 +25,59 @@ struct ChatDetailNavigation: ViewModifier {
     }
 }
 
+/// Duo 横屏右缘竖排注入的动作（ChatShellView 持有，页面级 toolbar 消费
+/// ——shell 级 toolbar 项不进竖排，见 ChatPageToolbar.railTrailing）。
+struct ChatRailContext {
+    let onNewSession: () -> Void
+    let onAccount: () -> Void
+    /// 真实头像（缓存 UIImage）；竖排容器只收零修饰 label，此处不做
+    /// frame/裁剪，交给系统按钮样式。
+    var avatarImage: UIImage?
+}
+
+private struct ChatRailKey: EnvironmentKey {
+    static let defaultValue: ChatRailContext? = nil
+}
+extension EnvironmentValues {
+    var chatRail: ChatRailContext? {
+        get { self[ChatRailKey.self] }
+        set { self[ChatRailKey.self] = newValue }
+    }
+}
+
+/// 带身份的 rail 按钮（id 编入头像状态：头像异步就绪后 id 变化强制
+/// 系统重建条目——改内容不重画，真机实证 2026-10-28）。
+struct ChatRailButton: Identifiable {
+    let id: String
+    let view: AnyView
+}
+
+/// 右缘竖排/顶栏按钮。官方规则（iPhone Duo Tech Talks / Lab Q&A）：
+/// 条目要有图标+标题（Label）——竖排显图标、溢出菜单显标题；裸 UIImage
+/// 是竖排容器实证可进的头像形态。
+func chatRailButtons(_ rail: ChatRailContext) -> [ChatRailButton] {
+    [
+        ChatRailButton(id: "newSession", view: AnyView(Button(action: rail.onNewSession) {
+            Label(String(localized: "新会话"), image: AppSymbolAssets.names["square.and.pencil"] ?? "aa-SquarePen")
+        })),
+        ChatRailButton(id: rail.avatarImage == nil ? "account-placeholder" : "account-avatar",
+            view: AnyView(Button(action: rail.onAccount) {
+                Image(uiImage: rail.avatarImage
+                    ?? UIImage(named: AppSymbolAssets.names["person.crop.circle"] ?? "aa-CircleUserRound")!)
+            }))
+    ]
+}
+
+/// 系统 "…" 溢出菜单里的动作条目。
+struct ChatOverflowAction: Identifiable {
+    let id = UUID()
+    let title: String
+    var isDisabled = false
+    /// 危险动作（如删除设备）：菜单行红字（等价 Button role: .destructive）。
+    var isDestructive = false
+    let handler: () -> Void
+}
+
 /// Native title/subtitle placements and toolbar items own size, spacing, glass
 /// grouping and scroll-edge rendering. No header view sits in the timeline.
 struct ChatPageToolbar: ViewModifier {
@@ -33,6 +86,18 @@ struct ChatPageToolbar: ViewModifier {
     var status: ChatHeaderStatus?
     var alignsTitleLeading = false
     let onMenu: () -> Void
+    /// Duo 横屏（宽 detail，系统 toolbar 收编成右缘竖排）时追加的尾部
+    /// 按钮。必须挂在页面级——shell 级 toolbar 项不进竖排（2026-10-27
+    /// 实证：页面级 folder/… 进竖排，shell 级新会话/头像留顶部）。
+    var railTrailing: [ChatRailButton] = []
+    /// 页面自己的尾部功能组（folder/设备菜单等）。与 railTrailing 分属
+    /// 两个 ToolbarItemGroup、中间以 ToolbarSpacer 断开——相邻同
+    /// placement 的组会被系统并成一个大胶囊（真机实证 2026-10-28），
+    /// 分开才能在竖排里保持两组独立折叠单位。
+    var pageTrailing: [AnyView] = []
+    /// 直接进系统 "…" 溢出菜单的动作（官方 ToolbarOverflowMenu，替代
+    /// 自造 ellipsis 菜单——后者叠在系统溢出上形成"…"套"…"两层）。
+    var overflowActions: [ChatOverflowAction] = []
 
     func body(content: Content) -> some View {
         content
@@ -43,8 +108,36 @@ struct ChatPageToolbar: ViewModifier {
             .toolbar(removing: .sidebarToggle)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onMenu) { SidebarMenuIcon() }
-                        .accessibilityLabel(String(localized: "打开侧栏"))
+                    // Label（图标+标题）：官方规则——溢出菜单显示标题，
+                    // 纯图标条目在菜单里没名字。
+                    Button(action: onMenu) {
+                        Label(String(localized: "打开侧栏"), image: AppSymbolAssets.names["sidebar.left"] ?? "aa-PanelLeft")
+                    }
+                }
+                // 页面功能组（folder/…）：默认优先级——键盘压缩竖排时
+                // 按官方"自下而上溢出"规则先进系统"…"菜单。
+                if !pageTrailing.isEmpty {
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        ForEach(pageTrailing.indices, id: \.self) { index in
+                            pageTrailing[index]
+                        }
+                    }
+                }
+                if !overflowActions.isEmpty {
+                    if #available(iOS 27.0, *) {
+                        ToolbarOverflowMenu {
+                            ForEach(overflowActions) { action in
+                                Button(action.title, role: action.isDestructive ? .destructive : nil,
+                                    action: action.handler)
+                                    .disabled(action.isDisabled)
+                            }
+                        }
+                    }
+                }
+                // 新会话+头像：高可见优先级（官方 iPhone Duo 规则）——
+                // 键盘压缩竖排时保留在栏内，其余项溢出进系统"…"。
+                ForEach(railTrailing) { button in
+                    RailPinnedItem(placement: .topBarTrailing) { button.view }
                 }
                 if alignsTitleLeading {
                     // Use the title region's available width. A leading bar
@@ -99,5 +192,21 @@ private struct ChatToolbarSubtitle: View {
 struct SidebarMenuIcon: View {
     var body: some View {
         AppSymbol("sidebar.left", size: 22).accessibilityHidden(true)
+    }
+}
+
+/// 高可见优先级 toolbar 项（官方 iPhone Duo 规则：键盘压缩竖排时高
+/// 优先级项保留在栏内）。iOS 27+ API，26 上退回普通项。
+private struct RailPinnedItem<Content: View>: ToolbarContent {
+    let placement: ToolbarItemPlacement
+    @ViewBuilder let content: () -> Content
+
+    var body: some ToolbarContent {
+        if #available(iOS 27.0, *) {
+            ToolbarItem(placement: placement, content: content)
+                .visibilityPriority(.high)
+        } else {
+            ToolbarItem(placement: placement, content: content)
+        }
     }
 }

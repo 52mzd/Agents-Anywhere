@@ -552,6 +552,10 @@ private struct SidebarDrawerNativeSplitView<
                 )
                 .toolbar(removing: .sidebarToggle)
             }
+            // 双栏同显时键盘弹在 detail 列：sidebar 列整体忽略键盘避让，
+            // 列不压缩、底部控件不随键盘上移。挂在 GeometryReader 上
+            // （挂在它内容上改不了列的 frame 提案，上轮真机验证无效）。
+            .ignoresSafeArea(.keyboard)
             .toolbar(.hidden, for: .navigationBar)
             .navigationSplitViewColumnWidth(min: 240, ideal: 300, max: 360)
         } detail: {

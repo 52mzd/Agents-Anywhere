@@ -72,6 +72,11 @@ struct NativeComposerEditor: UIViewRepresentable {
         view.textContainerInset = .zero
         view.textContainer.lineFragmentPadding = 0
         view.contentInset = .zero
+        // scrollEnabled 必须关：开启时 UITextView.sizeThatFits 返回固定
+        // frame 高，破坏自适应增高（2026-10-27 真机实证：输入满行不增
+        // 高、文字溢出不可见）。副作用是系统不跟随光标横滚——由
+        // Coordinator 手动 setContentOffset 补上（scrollEnabled=false
+        // 只禁交互滚动，程序设置仍生效）。
         view.isScrollEnabled = false
         view.showsVerticalScrollIndicator = true
         view.keyboardDismissMode = .none
@@ -94,10 +99,22 @@ struct NativeComposerEditor: UIViewRepresentable {
             let end = (draft.text as NSString).length
             view.selectedRange = NSRange(location: min(selection.location, end), length: 0)
         }
-        if draft.isFocused, !view.isFirstResponder {
-            view.becomeFirstResponder()
-        } else if !draft.isFocused, view.isFirstResponder {
-            view.resignFirstResponder()
+        // 焦点变更必须异步：updateUIView 里同步 becomeFirstResponder 会在
+        // 聚焦触发布局变化（Duo 双屏紧凑模式）时与键盘 reload 形成同步
+        // 重入死循环（updateUIView → becomeFirstResponder → 布局更新 →
+        // updateUIView...，主线程假死）。异步后 isFirstResponder 判断在
+        // 下一 runloop 已稳定，循环被打断。
+        // 异步块必须读"执行时"的实时意图，不能用捕获快照：抽屉展开等
+        // 转场中系统会短暂 resign（synchronize 已把 isFocused 写回
+        // false），拿旧快照 true 去弹键盘会引发键盘/布局反复弹跳
+        // （15PM 真机复现；上游同步版无此环）。
+        DispatchQueue.main.async {
+            guard view.window != nil else { return }
+            if draft.isFocused, !view.isFirstResponder {
+                view.becomeFirstResponder()
+            } else if !draft.isFocused, view.isFirstResponder {
+                view.resignFirstResponder()
+            }
         }
     }
 

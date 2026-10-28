@@ -2,7 +2,7 @@ import Foundation
 
 /// Transient session feedback belongs to the header, outside message geometry.
 enum ChatHeaderStatus: Equatable {
-    case networkOffline, deviceOffline, syncing, working, waitingForResponse, stopping
+    case networkOffline, deviceOffline, syncing, working, waitingForResponse, stopping, preparing
     case information(String)
 
     var title: String {
@@ -13,6 +13,7 @@ enum ChatHeaderStatus: Equatable {
         case .working: String(localized: "正在处理任务")
         case .waitingForResponse: String(localized: "等待回应")
         case .stopping: String(localized: "正在停止…")
+        case .preparing: String(localized: "正在准备设备…")
         case .information(let message): message
         }
     }
@@ -31,7 +32,7 @@ enum ChatHeaderStatus: Equatable {
         default: "info.circle"
         }
     }
-    var isProgress: Bool { self == .syncing || self == .working || self == .stopping }
+    var isProgress: Bool { self == .syncing || self == .working || self == .stopping || self == .preparing }
 }
 
 extension SessionChatModel {

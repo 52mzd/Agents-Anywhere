@@ -17,3 +17,16 @@
 - 改宽度前先读 duo-layout.md 的"三层宽度约束"清单。
 - 动 Textual 前先读 textual-vendor.md——本地是 vendor 定制版，
   升级须手动合并并保留性能定制。
+- 改 `SessionChatView` 这类大体量 SwiftUI body 前注意：body 表达式再加
+  任何内容就可能触发 "unable to type-check in reasonable time"。对策是把
+  子树/修饰链提取为私有方法或 ViewModifier（现有 timelinePane/bottomDock/
+  applyBehaviors 即为此拆分），不要往 body 里内联新表达式。
+- Duo/折叠屏相关改动先读 duo-layout.md（机型判断、双屏契约、
+  arrangement Swift 化名、真机部署命令）。
+- 图标一律用 `AppSymbol`（资产映射）：本项目环境 `Image(systemName:)`
+  完全不渲染（2026-10-26 两轮实测空白，全仓无先例）。
+- 改输入行（加/挪按钮）先读 duo-layout.md 的"ComposerLayout 多按钮
+  排布契约"——声明顺序即视觉顺序，宽度公式自动适配。
+- 给 struct 加属性后调用点报 "argument 'X' must precede argument 'Y'"：
+  memberwise init 的参数顺序 = 属性声明顺序（2026-10-26 ChatComposerDock
+  连环两轮）。新属性插到声明列表哪个位置，调用点的实参就得跟着挪到哪。

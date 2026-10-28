@@ -1,0 +1,100 @@
+# SpecRune Configuration
+# Project-level settings for the SpecRune workflow system.
+#
+# Every value below has a working default. Only uncomment what you need to
+# change — leaving a value commented keeps it tracking the tool's default,
+# which is what you want on upgrades.
+
+#-------------------------------------------------------------------------------
+# Session Recording
+#-------------------------------------------------------------------------------
+
+# Commit message used when auto-committing session record / task-archive changes.
+session_commit_message: "chore: record session"
+
+# Legacy (upstream reader compat): max lines per journal file before rotating.
+# SpecRune no longer appends or rotates journal files; kept so upstream readers
+# see the same key set.
+max_journal_lines: 2000
+
+#-------------------------------------------------------------------------------
+# Session Auto-Commit
+#-------------------------------------------------------------------------------
+
+# Whether scripts auto-stage and auto-commit session record / task-archive changes.
+#   true  (default): stage + commit after a session record write or a task archive.
+#   false:           write files to disk only; you review and commit yourself.
+# Set to false if .specrune/ is intentionally gitignored in your project.
+# session_auto_commit: true
+
+#-------------------------------------------------------------------------------
+# Monorepo Packages
+#-------------------------------------------------------------------------------
+
+# Declare packages to scope spec injection per package. Omit entirely for a
+# single-repo project — spec files then live directly under .specrune/spec/.
+#
+# packages:
+#   api:
+#     path: services/api
+#     type: local
+#   web:
+#     path: apps/web
+#     type: local
+#     git: true          # separate git repo (multi-repo layout)
+#
+# Which package new tasks belong to by default.
+# default_package: api
+
+# Which packages' specs get injected into sub-agents.
+#   active_task  - follow the active task's package (default)
+#   [api, web]   - an explicit list
+# spec_scope: active_task
+
+#-------------------------------------------------------------------------------
+# Context Injection Budgets (bytes)
+#-------------------------------------------------------------------------------
+#
+# Sub-agent context is assembled from the curated jsonl manifests plus the
+# task's prd.md / design.md / implement.md. These caps bound how much of it
+# reaches the model. A single oversized spec file can otherwise consume the
+# entire context and push out everything else — silently, from the model's
+# point of view.
+#
+# context_injection:
+#   max_file_bytes: 32768       # per jsonl-referenced file
+#   max_artifact_bytes: 65536   # per task artifact (prd / design / implement)
+#   max_total_bytes: 131072     # whole block
+
+#-------------------------------------------------------------------------------
+# Per-Turn Breadcrumb
+#-------------------------------------------------------------------------------
+
+# A prompt containing this keyword skips the per-turn workflow-state
+# breadcrumb injection. Set to "" to disable the escape hatch.
+# prompt_injection:
+#   skip_keyword: no-trellis
+
+#-------------------------------------------------------------------------------
+# Lifecycle Hooks
+#-------------------------------------------------------------------------------
+#
+# Commands run from the repo root on task lifecycle events. Hooks are
+# fail-open: a failing hook warns and the lifecycle command continues.
+# Each hook gets TASK_JSON_PATH in its environment.
+#
+# hooks:
+#   after_create:  ["echo created $TASK_JSON_PATH"]
+#   after_start:   []
+#   after_finish:  []
+#   after_archive: []
+
+#-------------------------------------------------------------------------------
+# Codex
+#-------------------------------------------------------------------------------
+
+# How Codex consumes spec context.
+#   auto   (default): dispatch a sub-agent that reads the jsonl manifests
+#   inline:           load specs through skills in the main session
+# codex:
+#   dispatch_mode: auto

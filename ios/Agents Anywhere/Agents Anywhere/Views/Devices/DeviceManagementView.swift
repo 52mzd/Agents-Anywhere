@@ -20,6 +20,9 @@ struct DeviceManagementView: View {
     let onSessionsUpdated: ([V2SessionMeta]) -> Void
     let onSetSessionsArchived: ([V2SessionID], Bool) async -> Bool
 
+    /// Duo 内屏注入的 ✎新会话/头像（横排竖排、竖屏顶栏，同会话页）。
+    @Environment(\.chatRail) private var chatRail
+
     @State private var model = DeviceManagementModel()
     @AppStorage(ProjectSidebarPreferences.sessionListKey) private var showsSessionList = false
     @State private var showsToolbarTitle = false
@@ -93,21 +96,19 @@ struct DeviceManagementView: View {
         .scrollIndicators(.hidden).scrollEdgeEffectStyle(.soft, for: .all)
         .refreshable { await dashboard.refresh(); await agents.refresh() }
         .modifier(ChatPageToolbar(title: showsToolbarTitle ? connector.name : "",
-            subtitle: showsToolbarTitle ? connectionDescription : nil, onMenu: onMenu))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button(String(localized: "New session"), systemImage: "square.and.pencil") { onNewSession(nil) }
-                    Button(String(localized: "Copy device ID"), systemImage: "doc.on.doc") { UIPasteboard.general.string = connector.id }
-                    Divider()
-                    Button(String(localized: "Rename device"), systemImage: "pencil") { proposedName = connector.name; isRenaming = true }.disabled(!canManage)
-                    Button(String(localized: "Rotate credential"), systemImage: "key") { confirmsRotation = true }.disabled(!canManage)
-                    Button(String(localized: "Delete device"), systemImage: "trash", role: .destructive) { confirmsDeletion = true }.disabled(!canManage)
-                } label: {
-                    AppSymbol("ellipsis")
-                }.accessibilityLabel(String(localized: "Device actions"))
-            }
-        }
+            subtitle: showsToolbarTitle ? connectionDescription : nil, onMenu: onMenu,
+            // 与会话/新会话页同套：Duo 内屏 ✎+头像进竖排/顶栏
+            //（不接 chatRail 时这两键在本页消失，真机实证 2026-10-28）。
+            railTrailing: chatRail.map { chatRailButtons($0) } ?? [],
+            // 原 ellipsis 设备菜单动作平铺进系统"…"（同其他页，消除
+            // 自造"…"菜单）。
+            overflowActions: [
+                ChatOverflowAction(title: String(localized: "New session")) { onNewSession(nil) },
+                ChatOverflowAction(title: String(localized: "Copy device ID")) { UIPasteboard.general.string = connector.id },
+                ChatOverflowAction(title: String(localized: "Rename device"), isDisabled: !canManage) { proposedName = connector.name; isRenaming = true },
+                ChatOverflowAction(title: String(localized: "Rotate credential"), isDisabled: !canManage) { confirmsRotation = true },
+                ChatOverflowAction(title: String(localized: "Delete device"), isDisabled: !canManage, isDestructive: true) { confirmsDeletion = true }
+            ]))
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if model.isSelectingSessions {
                 DeviceSessionSelectionDock(count: model.selectedSessionIds.count,
