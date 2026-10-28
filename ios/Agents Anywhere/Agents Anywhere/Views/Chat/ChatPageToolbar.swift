@@ -73,6 +73,8 @@ struct ChatOverflowAction: Identifiable {
     let id = UUID()
     let title: String
     var isDisabled = false
+    /// 危险动作（如删除设备）：菜单行红字（等价 Button role: .destructive）。
+    var isDestructive = false
     let handler: () -> Void
 }
 
@@ -125,7 +127,8 @@ struct ChatPageToolbar: ViewModifier {
                     if #available(iOS 27.0, *) {
                         ToolbarOverflowMenu {
                             ForEach(overflowActions) { action in
-                                Button(action.title, action: action.handler)
+                                Button(action.title, role: action.isDestructive ? .destructive : nil,
+                                    action: action.handler)
                                     .disabled(action.isDisabled)
                             }
                         }
