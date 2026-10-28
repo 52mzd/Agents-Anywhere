@@ -35,6 +35,24 @@ connector 降级成 `command_outcome_unknown`，客户端看到的就是
   duration 与 status（曾实证 status=ok duration_ms=5001：桥端正常返回、
   Python 校验拒绝）。
 
+## 与上游 main 的分叉（自留，不提上游）
+
+上游 compact-only 白名单是**刻意政策**（`0d150a6e` → PR #177，2026-09-28
+由 t4we fan 全量直通后 3 小时内收窄），理由有二：①避免暴露依赖 DSH
+客户端 UI 的命令入口；②模型/权限已有 AA 专用控件，开放命令会形成双
+入口。skill 不开放则是因为命令通道承诺"绝不作为普通 prompt 发送、失
+败保留草稿"，而 skill 执行本质就是发 prompt、无 registry 结算结果。
+
+我们的直通 + skill 开放（`eee2a620`）靠 accepted 三件套 + 会话日志
+`command/done` 异步落结果补齐了回执缺口，真机验证全链路可用。但这是
+**产品取舍分歧而非缺陷修复**——2026-10-28 与 dae 确认：上游大概率
+不接受，skill 开放/目录直通**自留自用，不开上游 PR**；若日后向上游
+提 dsh 修复类 PR（如三件套契约、竞速超时），须剥离 skill 相关改动。
+
+DSH `SessionSkillCatalog.list` 服务端只返回用户可调用技能
+（SDK 声明 "user-invocable skills"），`modelInvocable` 仅表示"同一
+技能是否也通告给模型"，是信息性标志——桥端无需再过滤。
+
 ## 错误模式
 
 - 在 connector 加"客户端还支持不了 X"之类的过滤：菜单内容是运行时下发
