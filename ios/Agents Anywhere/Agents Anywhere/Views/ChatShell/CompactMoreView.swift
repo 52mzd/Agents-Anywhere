@@ -91,13 +91,8 @@ struct CompactMoreView: View {
                 }
             }
 
-            Section {
-                Button {
-                    isShowingSettings = true
-                } label: {
-                    Label(String(localized: "设置与账号"), systemImage: "gearshape")
-                }
-            }
+            // 无"设置与账号"节：顶部账号卡片已打开同一个
+            // AccountSettingsSheet，再放一行是重复入口。
         }
         .listStyle(.insetGrouped)
         .scrollEdgeEffectStyle(.soft, for: .bottom)
