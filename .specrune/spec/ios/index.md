@@ -9,6 +9,7 @@
 |------|-------|
 | [duo-layout.md](./duo-layout.md) | 折叠屏（iPhone Duo）机型判断与宽屏布局契约 |
 | [textual-vendor.md](./textual-vendor.md) | Textual 库 vendor 状态与上游对照 |
+| [upstream-sync.md](./upstream-sync.md) | 同步上游 main 的冲突处置与合并校验 |
 
 ## Quick Rules
 
@@ -30,3 +31,5 @@
 - 给 struct 加属性后调用点报 "argument 'X' must precede argument 'Y'"：
   memberwise init 的参数顺序 = 属性声明顺序（2026-10-26 ChatComposerDock
   连环两轮）。新属性插到声明列表哪个位置，调用点的实参就得跟着挪到哪。
+- 同步上游 main 前先读 upstream-sync.md——pbxproj 取我们侧（签名）、
+  xcstrings 程序化 union、合并后必须树级比对（自动合并会追加重复方法）。
