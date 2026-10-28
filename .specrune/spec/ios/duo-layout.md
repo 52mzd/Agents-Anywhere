@@ -378,3 +378,29 @@ width）。已知的取舍：内屏聊天列全宽（2200 上限）违背 Rule 2
 更长文本行"，是用户决策"折叠屏铺满"。审计其余全合规（无 UIScreen/
 orientation/自定义 bar；adaptive grid、ViewThatFits、可读上限、系统
 容器齐全）。sheets 36 处未设 presentationPlacement，半折叠姿态待抽查。
+
+## 侧栏启动设置契约（2026-10-28，fa61170f 单测锚定）
+
+`ChatSidebarState` 持有三个 UserDefaults 键（常量集中定义，禁止裸字符串）：
+
+```swift
+static let openOnLaunchDefaultsKey  = "chat.sidebar.openOnLaunch"   // Bool，默认 true
+static let rememberStateDefaultsKey  = "chat.sidebar.rememberState" // Bool，默认 false
+static let lastOpenDefaultsKey       = "chat.sidebar.lastOpen"      // Bool，分栏开合快照
+```
+
+**优先级矩阵**（ChatShellView 启动解析 `defaultOpen`）：
+
+| rememberState | lastOpen 存在 | 启动态 |
+|---|---|---|
+| true | 是 | lastOpen（记忆恢复，设置页"启动时展开侧栏"置灰） |
+| true | 否 | 退回 openOnLaunch |
+| false | — | openOnLaunch（默认 true = 现行为） |
+
+- **快照时机**：`onChange(sidebar.isOpen)` 且 `layout == .regularSplit` 即时写；
+  rememberState 开关刚打开时立即落当前值（避免"开启记忆后首启仍用默认"空窗）。
+- **抽屉形态恒闭合启动**，两个设置都不作用于它（抽屉盖内容）。
+- **错误写法**：把 lastOpen 写进 `isOpen(in:)` 内部——该函数是纯查询，
+  写入应在 shell 的 onChange 层（副作用与查询分离）。
+- **测试锚**：`ChatSidebarStateTests.launchDefaultControlsTheInitialSplitState`
+  （defaultOpen=false 闭合启动 / 抽屉不受影响 / 显式开合不被同值 setLayout 重置）。
