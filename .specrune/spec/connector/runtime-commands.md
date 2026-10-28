@@ -29,6 +29,9 @@ connector 降级成 `command_outcome_unknown`，客户端看到的就是
 
 - 预算超时等拿不到原生 commandId 的场景，用合成 `pending-<uuid>` 顶替
   （server 只透传不关联，已核实 `sessions.py` execute_session_command）。
+- `models.py` 的 ok 路径校验失败时**逐项点名缺失字段**（如
+  "commandId must be a non-empty string"），不再抛笼统的 incomplete——
+  下次同类问题从 ValueError 消息即可定位，不必再翻三层日志。
 - **"结果尚不确定"这条报错文本在 TS 桥、Python connector、server 三层
   逐字存在**——凭消息无法定位来源层。定位方法：取 mtime 最新的
   `~/.agents-anywhere/logs/runtime-*.jsonl`，grep `executeCommand` 看
