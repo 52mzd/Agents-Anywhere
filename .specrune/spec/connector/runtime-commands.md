@@ -18,6 +18,23 @@ RPC 链）。
 - execute 拒绝不认识的指令（`unknown_command`）并在技能执行前对照实时
   catalog 复验。
 
+## ok 回执三件套契约（2026-10-28）
+
+桥端返回 `ok: true` 的指令回执必须同时携带 `kind: 'success'`、非空
+`commandId`、`executionState: 'accepted'`，且不得带 `retryable` 和顶层
+`code`——见 `connector/runtimes/dsh/bridge/models.py` 的
+"acknowledgement is incomplete or inconsistent" 校验。缺任何一项会被
+connector 降级成 `command_outcome_unknown`，客户端看到的就是
+"结果尚不确定"。
+
+- 预算超时等拿不到原生 commandId 的场景，用合成 `pending-<uuid>` 顶替
+  （server 只透传不关联，已核实 `sessions.py` execute_session_command）。
+- **"结果尚不确定"这条报错文本在 TS 桥、Python connector、server 三层
+  逐字存在**——凭消息无法定位来源层。定位方法：取 mtime 最新的
+  `~/.agents-anywhere/logs/runtime-*.jsonl`，grep `executeCommand` 看
+  duration 与 status（曾实证 status=ok duration_ms=5001：桥端正常返回、
+  Python 校验拒绝）。
+
 ## 错误模式
 
 - 在 connector 加"客户端还支持不了 X"之类的过滤：菜单内容是运行时下发
