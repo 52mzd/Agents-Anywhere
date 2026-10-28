@@ -369,6 +369,16 @@ struct ChatOverflowAction: Identifiable {
 - rail 检测不用几何比例猜：官方信号 `toolbarVerticalEdge`（iOS 27.1+，
   nil=水平条）；本仓最终连它也不需要——Duo 内屏恒注入即可。
 
+## 溢出菜单动作必须带图标（2026-10-29）
+
+`ChatOverflowAction` 有 `systemImage` 字段，渲染处有图标走
+`Label(title, systemImage:)`——**溢出菜单迁移时图标最容易丢**：把自造
+"…"菜单（`Button(title, systemImage:)`）搬进系统 `ToolbarOverflowMenu`
+时，只搬标题不搬 SF Symbol 会让所有 "…" 二级菜单变纯文字（用户对照
+上游发现，2026-10-29 修复 `e9eeaa6e`，13 个动作全部按上游原值补回：
+sparkles/folder/info.circle/number/doc.on.doc/square.and.pencil/pencil/
+key/trash）。新增溢出动作时对照上游同名菜单选图标。
+
 ## 机型门控的保留理由（swiftui-iphone-duo 审计结论 2026-10-28）
 
 `isDuoFoldableIPhone` 共 5 处，属 skill 红旗（`if isIPhoneDuo`）但**有意
