@@ -56,6 +56,27 @@ DSH `SessionSkillCatalog.list` 服务端只返回用户可调用技能
 （SDK 声明 "user-invocable skills"），`modelInvocable` 仅表示"同一
 技能是否也通告给模型"，是信息性标志——桥端无需再过滤。
 
+## 桥端排障日志地图与联调回路（2026-10-28 实证）
+
+排障先看对日志，别看错地方：
+
+| 日志 | 内容 |
+|---|---|
+| `~/.agents-anywhere/logs/runtime-*.jsonl`（按 mtime 取最新） | **RPC 流量**：每条 `aa.dsh.v2.Bridge.executeCommand status=ok duration_ms=…` |
+| `~/.agents-anywhere/dsh-bridge-next/logs/connector-output.json` | 只有 `[process]` 生命周期事件，**没有 RPC**——看它诊断指令问题是死路 |
+| `~/.dsh/logs/desktop-next-<date>.0.jsonl` | DSH 应用自身日志 |
+
+联调回路（改桥端 TS 后真机生效的最短路径）：
+
+1. `~/.dsh/profiles/desktop` 里 `@agents-anywhere/dsh-bridge-next` 是
+   **symlink 指向本仓**——`cd dsh-bridge-next && corepack yarn build` 的
+   `lib/index.js` 即为 DSH 实际加载物，无需安装。
+2. **必须重启 DSH** 才加载新 build；改 src 不 build、或 build 后不重启，
+   真机跑的都是旧代码（本轮两轮无效复测的另一半原因）。
+3. `corepack yarn check` 需 `AGENT_SERVER_TEST_DB_URL`；本机无 docker，
+   用 Homebrew `postgresql@17`（`127.0.0.1:5432`，测试库
+   `agents_anywhere_test`）。
+
 ## 错误模式
 
 - 在 connector 加"客户端还支持不了 X"之类的过滤：菜单内容是运行时下发
