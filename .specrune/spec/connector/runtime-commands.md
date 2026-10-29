@@ -1,7 +1,7 @@
 # Runtime 指令目录直通契约
 
 来源：2026-10-24 "手机 `/` 菜单只有 /compact" 修复。connector 侧改动：
-`connector/runtimes/dsh/runtime.py` 移除 compact 白名单过滤与
+`connector/connector/runtimes/dsh/runtime.py` 移除 compact 白名单过滤与
 executeCommand 的非 compact 拒绝（尚未提交时以工作区为准）。
 
 ## 契约
@@ -22,8 +22,9 @@ RPC 链）。
 
 桥端返回 `ok: true` 的指令回执必须同时携带 `kind: 'success'`、非空
 `commandId`、`executionState: 'accepted'`，且不得带 `retryable` 和顶层
-`code`——见 `connector/runtimes/dsh/bridge/models.py` 的
-"acknowledgement is incomplete or inconsistent" 校验。缺任何一项会被
+`code`——见 `connector/connector/runtimes/dsh/bridge/models.py` ok 路径
+的逐项校验（失败消息形如 "acknowledgement is invalid: commandId must
+be a non-empty string"，2026-10-28 起逐项点名）。缺任何一项会被
 connector 降级成 `command_outcome_unknown`，客户端看到的就是
 "结果尚不确定"。
 

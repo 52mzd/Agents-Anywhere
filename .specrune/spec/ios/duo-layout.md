@@ -1,7 +1,8 @@
 # Duo（折叠屏）机型判断与宽屏布局契约
 
 来源：2026-10-24 "Duo 内屏横屏内容列宽度"五轮修复复盘。分支
-`feat/ios/foldable-compact-tabs`（9eb1e23d / 53698fdc / 4cad46af）。
+`feat/ios/foldable-compact-tabs`（9eb1e23d / 53698fdc / 4cad46af；
+内容已并回 main 并删枝，2026-10-28）。
 
 ## 机型判断：`isDuoFoldableIPhone`
 
@@ -340,8 +341,14 @@ ChatPageToolbar(railTrailing: [ChatRailButton],     // id 编入头像就绪状�
                 overflowActions: [ChatOverflowAction]) // 进系统"…"第一层
 struct ChatRailButton: Identifiable { let id: String; let view: AnyView }
 struct ChatOverflowAction: Identifiable {
-    let title: String; var isDisabled = false; let handler: () -> Void
+    let title: String
+    var systemImage: String? = nil   // 溢出菜单行图标，缺失=纯文字行
+    var isDisabled = false
+    var isDestructive = false        // 红字角色（如删除设备）
+    let handler: () -> Void
 }
+// 2026-10-29 勘误：旧签名缺 systemImage/isDestructive，曾导致图标全丢
+// （见下文「溢出菜单动作必须带图标」节），新动作勿照旧版抄写。
 // RailPinnedItem = ToolbarItem + visibilityPriority(.high)（iOS 27 门控）
 ```
 - 条目一律 `Label(标题, image: 资产名)`——竖排显图标、系统"…"溢出菜单显
