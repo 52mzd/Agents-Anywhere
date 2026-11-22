@@ -23,6 +23,10 @@ struct ChatMarkdownView: View {
     @State private var revealDeadlines: [Int: Date] = [:]
     /// Completed blocks parsed so far; each batch re-parses only the open tail.
     @State private var parseState = MarkdownParseState()
+    /// 当前视图文本对应的解析请求。异步结果回来时用它判断结果属于哪段文本：
+    /// 非流式整段替换（如 SpecRune 文档切换）时新文本的块数可能比旧文本少，
+    /// 不能用块数判新旧——否则新文档会被当成旧快照丢弃，表现为点标签正文不变。
+    @State private var activeParseText = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: blockSpacing) {
@@ -37,6 +41,7 @@ struct ChatMarkdownView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .task(id: ParseRequest(text: text, resolvesFileReferences: resolvesFileReferences)) {
             let request = ParseRequest(text: text, resolvesFileReferences: resolvesFileReferences)
+            activeParseText = request.text
             // Parsing a long response must not block scroll and drawer gestures.
             // Cancelled requests cannot publish an older snapshot over a new reply.
             // Streaming replies reuse the blocks before the last safe boundary.
@@ -51,9 +56,13 @@ struct ChatMarkdownView: View {
             // 若被取消（布局重建、页面切换），blocks 会永远是空数组，表现为
             // 整块正文空白且再也不恢复。
             guard case .success(let parsed) = result else { return }
-            // 代价是取消的任务也可能晚于新任务完成。此时旧结果不能覆盖新结果：
-            // 同一段文本的块数只会增长，块数更少说明是更早的旧快照。
-            guard parsed.blocks.count >= blocks.count else { return }
+            // 结果属于已被替换掉的旧文本（切换文档、新回复已到）：丢弃，避免覆盖当前正文。
+            guard activeParseText == request.text else { return }
+            // 流式追加：同一段文本的块数只会增长，块数更少说明是更早的旧快照。
+            // 非流式是整段替换，新文本的块数可以更少，不适用这条判断。
+            if isStreaming {
+                guard parsed.blocks.count >= blocks.count else { return }
+            }
             parseState = parsed.state
             let next = parsed.blocks
             guard blocks != next else { return }
