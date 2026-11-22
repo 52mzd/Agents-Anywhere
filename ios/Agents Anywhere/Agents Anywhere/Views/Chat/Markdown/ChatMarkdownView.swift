@@ -56,13 +56,14 @@ struct ChatMarkdownView: View {
             // 若被取消（布局重建、页面切换），blocks 会永远是空数组，表现为
             // 整块正文空白且再也不恢复。
             guard case .success(let parsed) = result else { return }
-            // 结果属于已被替换掉的旧文本（切换文档、新回复已到）：丢弃，避免覆盖当前正文。
-            guard activeParseText == request.text else { return }
-            // 流式追加：同一段文本的块数只会增长，块数更少说明是更早的旧快照。
-            // 非流式是整段替换，新文本的块数可以更少，不适用这条判断。
-            if isStreaming {
-                guard parsed.blocks.count >= blocks.count else { return }
-            }
+            // 结果只属于产生它的那段文本；块数保护仅对流式追加成立。
+            guard MarkdownPublishRule.accepts(
+                requestText: request.text,
+                currentText: activeParseText,
+                resultBlockCount: parsed.blocks.count,
+                currentBlockCount: blocks.count,
+                isStreaming: isStreaming
+            ) else { return }
             parseState = parsed.state
             let next = parsed.blocks
             guard blocks != next else { return }
