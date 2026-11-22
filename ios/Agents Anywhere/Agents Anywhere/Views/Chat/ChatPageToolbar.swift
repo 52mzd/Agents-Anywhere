@@ -102,10 +102,11 @@ struct ChatPageToolbar: ViewModifier {
     /// 自造 ellipsis 菜单——后者叠在系统溢出上形成"…"套"…"两层）。
     var overflowActions: [ChatOverflowAction] = []
 
-    /// 抽屉形态下抽屉一开就把详情盖住：此时导航栏在卡片位移中会被系统
-    /// 重画一次（出现又消失，用户 2026-11-05 真机反馈）。直接不渲染，
-    /// 抽屉收起再恢复。nativeSidebar 恒 false，内屏不受影响。
-    @Environment(\.sidebarDrawerObscuresDetail) private var drawerObscuresDetail
+    /// 抽屉形态下不要隐藏导航栏：隐藏会让 NavigationStack 内容区扩展，
+    /// 页面整体上移、抽屉收起再落回（2026-11-21 实测约 80pt）。抽屉动效
+    /// 已改为卡片固定、侧栏滑出（导航栏不随卡片位移），保持渲染即可让
+    /// 内容位置稳定。细节见 `.specrune/spec/ios/duo-layout.md`
+    /// 「合盖外屏外壳 = 原版抽屉」。
 
     // 位置交给系统分派，不调 toolbarVerticalBehavior：Duo 外屏（合盖）的
     // toolbar 本来就该在侧边竖排，且该开关必须当稳定选择、禁止随方向或
@@ -115,7 +116,6 @@ struct ChatPageToolbar: ViewModifier {
             .navigationTitle(title)
             .navigationSubtitle(alignsTitleLeading ? "" : subtitle ?? "")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(drawerObscuresDetail ? .hidden : .visible, for: .navigationBar)
             .toolbar(removing: .sidebarToggle)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
