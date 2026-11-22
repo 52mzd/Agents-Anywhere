@@ -37,10 +37,22 @@ ChatMarkdownView(text: doc, blockSpacing: 0, reservesStreamingHeight: false)
 `.task` 只跑一次，那一次若被取消（布局重建、页面切换），`blocks` 永远是空数组
 ——**整块正文空白且不再恢复**，不是「短暂加载」。
 
-现在：取消仍写结果；结果是否属于当前正文由**解析请求的文本**判定——
-`activeParseText == request.text` 才接受（`activeParseText` 在 task 开头写入）。
-块数保护 `parsed.blocks.count >= blocks.count` **只在 `isStreaming` 时保留**：
-流式是同一段文本追加，块数只增不减；非流式是整段替换，新文档块数可以比旧文档少。
+现在：取消仍写结果；结果是否属于当前正文由 `MarkdownPublishRule.accepts`
+（`Models/Chat/MarkdownPublishRule.swift`）判定，视图只调用它：
+
+```swift
+MarkdownPublishRule.accepts(
+    requestText: request.text,      // 产生结果的解析请求
+    currentText: activeParseText,   // task 开头写入的当前请求
+    resultBlockCount: parsed.blocks.count,
+    currentBlockCount: blocks.count,
+    isStreaming: isStreaming
+)
+```
+
+契约：文本不同 → 拒绝（旧任务晚到，不覆盖当前正文）；文本相同 → 流式要求块数
+不减，非流式一律接受。回归测试 `ClientCoreTests/MarkdownPublishRuleTests.swift`
+钉住三种情况：旧文本拒绝 / 非流式接受更少块数 / 流式保持单调。
 
 **不能用块数判非流式的新旧**（2026-11-22 实录）：SpecRune 任务详情从「设计」切到
 「实施」，实施块数更少，新结果被当成旧快照丢弃——标签高亮切了、正文停在设计；
@@ -49,5 +61,6 @@ ChatMarkdownView(text: doc, blockSpacing: 0, reservesStreamingHeight: false)
 ## 验证
 
 - 纯逻辑：`cd ios/Packages/SpecRuneKit && swift test`（树 / 归档分组 / 错误分类 / jsonl）
+- 渲染器逻辑：`swift test --package-path ios`（ClientCoreTests，含 `MarkdownPublishRuleTests`）
 - 渲染：模拟器实跑，**从概览切到长文档标签**（不是默认打开），确认无空白、无大间距
 - 非流式文档标签切换：按块数**减少**的方向再切一次（长文档 → 短文档），确认正文跟着换
