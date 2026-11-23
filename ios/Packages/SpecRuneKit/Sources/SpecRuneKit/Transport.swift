@@ -23,18 +23,15 @@ public nonisolated struct SpecRuneShellResult: Hashable, Sendable {
     }
 }
 
-/// 宿主（主 app）提供的传输能力。
-///
-/// 只有两个动作：跑一条 shell、读一个文本文件。主 app 用官方 Server 既有的
-/// `shell/exec` 与 `fs/readText` 端点实现它——本包因此不必依赖 ClientCore，
-/// 也就不必为跨包可见性给一堆既有类型加 `public`。
-/// 读到的文本文件。`truncated` 表示原文超过读取上限（1 MiB）。
+/// 读到的文本文件。`size` 是原始字节数（未截断前），`truncated` 表示原文超过读取上限（1 MiB）。
 public nonisolated struct SpecRuneTextFile: Hashable, Sendable {
     public let content: String
+    public let size: Int
     public let truncated: Bool
 
-    public init(content: String, truncated: Bool) {
+    public init(content: String, size: Int, truncated: Bool = false) {
         self.content = content
+        self.size = size
         self.truncated = truncated
     }
 }
@@ -50,6 +47,10 @@ public nonisolated struct SpecRuneDirectoryEntry: Hashable, Sendable {
     }
 }
 
+/// 宿主（主 app）提供的传输能力：跑 shell、读文本、列目录。
+///
+/// 主 app 用官方 Server 既有的 `shell/exec`、`fs/readText` 与 `fs/readDir`
+/// 端点实现它——本包因此不必依赖 ClientCore，也就不必为跨包可见性给一堆既有类型加 `public`。
 public nonisolated protocol SpecRuneTransport: Sendable {
     /// 在 `repo` 根执行 shell 命令。
     func shell(repo: String, command: String) async throws -> SpecRuneShellResult

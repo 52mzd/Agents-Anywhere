@@ -193,13 +193,13 @@ public nonisolated struct SpecRuneClient: Sendable {
         ]
         for (kind, present) in declared where present == true {
             if let file = try await readText(repo: repo, path: "\(taskDir)/\(kind.fileName)") {
-                docs[kind] = SpecRuneDoc(content: file.content, truncated: file.truncated)
+                docs[kind] = SpecRuneDoc(content: file.content, bytes: file.size, truncated: file.truncated)
             }
         }
         // record / research / review 没有 has 标志，只能试读；缺失属于常态，容错即可。
         for kind in [SpecRuneDocKind.record, .research, .review] {
             if let file = try? await readText(repo: repo, path: "\(taskDir)/\(kind.fileName)") {
-                docs[kind] = SpecRuneDoc(content: file.content, truncated: file.truncated)
+                docs[kind] = SpecRuneDoc(content: file.content, bytes: file.size, truncated: file.truncated)
             }
         }
         // 上下文清单：两份 jsonl 合并，与面板概览「上下文」同源。
@@ -209,7 +209,255 @@ public nonisolated struct SpecRuneClient: Sendable {
                 context.append(contentsOf: Self.parseContextRows(file.content))
             }
         }
-        return SpecRuneTaskDetail(summary: summary, docs: docs, context: context)
+        // 调研/记录清单：两个聚合各自容错，失败返回空数组，不拖垮详情。
+        let researchFiles = await researchFiles(repo: repo, taskDir: taskDir)
+        let sessionRecords = await sessionRecords(repo: repo, taskRef: summary.dir)
+        return SpecRuneTaskDetail(
+            summary: summary,
+            docs: docs,
+            context: context,
+            researchFiles: researchFiles,
+            sessionRecords: sessionRecords
+        )
+    }
+
+    // MARK: - 调研与记录清单
+
+    /// 会话记录目录（相对 repo）。
+    private static let sessionsDirectory = ".specrune/sessions"
+
+    /// 调研文件清单：任务根 `research.md`、根 `research-<slug>.md` 与
+    /// `research/` 第一层 `.md`（大小写不敏感、不递归）。
+    ///
+    /// 同名去重时 `research/` 内版本优先（与面板 `readResearchFiles` 同口径）；
+    /// iOS 不取 mtime（用户裁决），改按文件名升序。目录或单个文件读取失败都
+    /// 跳过，不拖垮任务详情。
+    public func researchFiles(repo: String, taskDir: String) async -> [SpecRuneResearchFile] {
+        // 先收根目录、再收 research/：同名键后写覆盖，保证目录内版本优先。
+        var paths: [String: String] = [:]
+        if let entries = try? await transport.listDirectory(repo: repo, path: taskDir) {
+            for entry in entries where !entry.isDirectory && Self.isRootResearchName(entry.name) {
+                paths[entry.name] = "\(taskDir)/\(entry.name)"
+            }
+        }
+        let researchDir = "\(taskDir)/research"
+        if let entries = try? await transport.listDirectory(repo: repo, path: researchDir) {
+            for entry in entries where !entry.isDirectory && Self.isMarkdownName(entry.name) {
+                paths[entry.name] = "\(researchDir)/\(entry.name)"
+            }
+        }
+
+        var files: [SpecRuneResearchFile] = []
+        for (name, path) in paths {
+            guard let file = try? await readText(repo: repo, path: path) else { continue }
+            files.append(SpecRuneResearchFile(
+                name: name,
+                bytes: file.size,
+                truncated: file.truncated,
+                content: file.content
+            ))
+        }
+        return files.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// 匹配当前任务的会话记录（`.specrune/sessions/*.md`）。
+    ///
+    /// 入选条件与面板 `readSessionRecords` 一致：frontmatter `task` 等于任务
+    /// 目录名，或去掉 `NN-MM-` 前缀的短名；`id`/`task` 为空、缺闭合 `---`
+    /// 的记录跳过。按文件名（UTC 时间戳）倒序，每批 6 个并发读取；单个文件
+    /// 失败跳过，目录不存在返回空数组。
+    public func sessionRecords(repo: String, taskRef: String) async -> [SpecRuneSessionRecord] {
+        guard let entries = try? await transport.listDirectory(repo: repo, path: Self.sessionsDirectory)
+        else { return [] }
+        let names = entries
+            .filter { !$0.isDirectory && Self.isMarkdownName($0.name) }
+            .map(\.name)
+            .sorted(by: >)
+
+        var records: [SpecRuneSessionRecord] = []
+        for start in stride(from: 0, to: names.count, by: 6) {
+            let batch = names[start..<min(start + 6, names.count)]
+            let part = await withTaskGroup(of: SpecRuneSessionRecord?.self) { group in
+                for name in batch {
+                    group.addTask { await self.readSessionRecord(repo: repo, name: name, taskRef: taskRef) }
+                }
+                var rows: [SpecRuneSessionRecord] = []
+                for await row in group { if let row { rows.append(row) } }
+                return rows
+            }
+            records.append(contentsOf: part)
+        }
+        return records.sorted { $0.name > $1.name }
+    }
+
+    /// 读一条会话记录并解析 frontmatter；读取失败或畸形返回 nil。
+    private func readSessionRecord(
+        repo: String,
+        name: String,
+        taskRef: String
+    ) async -> SpecRuneSessionRecord? {
+        guard let file = try? await readText(repo: repo, path: "\(Self.sessionsDirectory)/\(name)"),
+              let parsed = Self.parseSessionRecord(content: file.content, taskRef: taskRef)
+        else { return nil }
+        return SpecRuneSessionRecord(
+            name: name,
+            at: Self.recordDate(fromName: name),
+            bytes: file.size,
+            truncated: file.truncated,
+            content: file.content,
+            body: parsed.body,
+            meta: parsed.meta
+        )
+    }
+
+    /// 任务根的调研文件名：`research.md` 或 `research-<slug>.md`（大小写不敏感）。
+    static func isRootResearchName(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        guard lower.hasSuffix(".md") else { return false }
+        let stem = lower.dropLast(3)
+        if String(stem) == "research" { return true }
+        return stem.hasPrefix("research-") && stem.count > "research-".count
+    }
+
+    /// 是否 `.md` 文件（大小写不敏感）。
+    static func isMarkdownName(_ name: String) -> Bool {
+        name.lowercased().hasSuffix(".md")
+    }
+
+    /// 解析会话记录：缺闭合分隔段或 `id`/`task` 为空返回 nil。
+    ///
+    /// 与面板正则 `^---\r?\n([\s\S]*?)\r?\n---` 同语义：开头必须是 `---`
+    /// 分隔行，闭合行以行首 `---` 判定；`task`/`id` 只吃冒号后的水平空白
+    /// （`\s*` 会跨行，空值会把下一行吞成自己的值）。
+    static func parseSessionRecord(
+        content: String,
+        taskRef: String
+    ) -> (body: String, meta: SpecRuneSessionMeta)? {
+        guard let block = splitFrontmatter(content) else { return nil }
+        let fields = frontmatterFields(block.frontmatter)
+        guard let task = fields["task"], !task.isEmpty,
+              let id = fields["id"], !id.isEmpty
+        else { return nil }
+        guard task == taskRef || task == shortTaskRef(taskRef) else { return nil }
+
+        func value(_ key: String) -> String? {
+            guard let raw = fields[key], !raw.isEmpty else { return nil }
+            return raw
+        }
+        let meta = SpecRuneSessionMeta(
+            title: value("title"),
+            status: value("status"),
+            created: value("created"),
+            developer: value("developer"),
+            platform: value("platform"),
+            branch: value("branch")
+        )
+        return (body: block.body, meta: meta)
+    }
+
+    /// 拆出 frontmatter 与正文：正文是闭合行之后、去掉连续空行的部分。
+    ///
+    /// 用 `components(separatedBy:)` 而不是 `split(separator:)`：Swift 把
+    /// `\r\n` 当作**一个** Character，按 `"\n"` 切分在 CRLF 文本里切不开。
+    static func splitFrontmatter(_ text: String) -> (frontmatter: String, body: String)? {
+        // 开头分隔行 = "---" + 一个换行 Character（LF 或 CRLF），都是 4 个 Character。
+        guard text.hasPrefix("---\r\n") || text.hasPrefix("---\n") else { return nil }
+
+        let lines = text.dropFirst(4).components(separatedBy: "\n")
+        guard let closing = lines.firstIndex(where: { $0.hasPrefix("---") }) else { return nil }
+        let frontmatter = lines[..<closing].joined(separator: "\n")
+        // 去掉闭合行之后的连续空行（对应 `^(?:\r?\n)+`）。
+        var bodyLines = lines[(closing + 1)...]
+        while let first = bodyLines.first, first.isEmpty || first == "\r" {
+            bodyLines = bodyLines.dropFirst()
+        }
+        return (frontmatter, bodyLines.joined(separator: "\n"))
+    }
+
+    /// 取 frontmatter 的 `key: value`（每个键取第一次出现，值去掉首尾空白）。
+    static func frontmatterFields(_ frontmatter: String) -> [String: String] {
+        var fields: [String: String] = [:]
+        for line in frontmatter.components(separatedBy: "\n") {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let key = String(line[..<colon])
+            guard !key.isEmpty, fields[key] == nil else { continue }
+            fields[key] = line[line.index(after: colon)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return fields
+    }
+
+    /// 去掉任务目录名的 `NN-MM-` 前缀（历史会话记录只写短名）。
+    static func shortTaskRef(_ taskRef: String) -> String {
+        let characters = Array(taskRef)
+        guard characters.count > 6,
+              characters[0].isASCII, characters[0].isNumber,
+              characters[1].isASCII, characters[1].isNumber,
+              characters[2] == "-",
+              characters[3].isASCII, characters[3].isNumber,
+              characters[4].isASCII, characters[4].isNumber,
+              characters[5] == "-"
+        else { return taskRef }
+        return String(characters.dropFirst(6))
+    }
+
+    /// 从文件名解析记录时间：`YYYYMMDDTHHMMSS-<slug>.md`（UTC），转成本地时区
+    /// `yyyy-MM-dd HH:mm:ss`；解析失败返回空。
+    static func recordDate(fromName name: String) -> String {
+        let prefix = Array(name.prefix(16))
+        guard prefix.count == 16,
+              prefix[8] == "T",
+              prefix[15] == "-",
+              prefix[0..<8].allSatisfy(Self.isASCIIDigit),
+              prefix[9..<15].allSatisfy(Self.isASCIIDigit)
+        else { return "" }
+        let digits = String(prefix[0..<8]) + String(prefix[9..<15])
+        guard let year = Int(digits.prefix(4)),
+              let month = Int(digits.dropFirst(4).prefix(2)),
+              let day = Int(digits.dropFirst(6).prefix(2)),
+              let hour = Int(digits.dropFirst(8).prefix(2)),
+              let minute = Int(digits.dropFirst(10).prefix(2)),
+              let second = Int(digits.dropFirst(12).prefix(2))
+        else { return "" }
+
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = second
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(secondsFromGMT: 0) ?? utcCalendar.timeZone
+        guard let date = utcCalendar.date(from: components) else { return "" }
+        // `Calendar.date(from:)` 对非法日期是宽松的（`2026-02-30` → `03-02`、
+        // `2026-13-01` → `2027-01-01`）。反向取分量核对，与输入不一致即视为
+        // 解析失败，避免把不存在的日期显示成被顺延的日期。
+        let roundTrip = utcCalendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: date
+        )
+        guard roundTrip.year == year, roundTrip.month == month, roundTrip.day == day,
+              roundTrip.hour == hour, roundTrip.minute == minute, roundTrip.second == second
+        else { return "" }
+
+        var localCalendar = Calendar(identifier: .gregorian)
+        localCalendar.timeZone = .current
+        let local = localCalendar.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second],
+            from: date
+        )
+        guard let localYear = local.year, let localMonth = local.month, let localDay = local.day,
+              let localHour = local.hour, let localMinute = local.minute, let localSecond = local.second
+        else { return "" }
+        return String(
+            format: "%04d-%02d-%02d %02d:%02d:%02d",
+            localYear, localMonth, localDay, localHour, localMinute, localSecond
+        )
+    }
+
+    private static func isASCIIDigit(_ character: Character) -> Bool {
+        character.isASCII && character.isNumber
     }
 
     // MARK: - 规范

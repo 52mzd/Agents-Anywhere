@@ -1,0 +1,3 @@
+{"file":".specrune/spec/ios/markdown-rendering.md","reason":"非流式 Markdown 必须显式关闭流式参数；标签切换回归坑"}
+{"file":"contracts/specrune/1.0/README.md","reason":"字段结构权威：docs/files/times/researchFiles/context 形状与 1 MiB 截断语义"}
+{"file":".specrune/spec/connector/local-rpc.md","reason":"fs.readText 4MiB / shell.exec 64k 边界；大列表走目录读取"}

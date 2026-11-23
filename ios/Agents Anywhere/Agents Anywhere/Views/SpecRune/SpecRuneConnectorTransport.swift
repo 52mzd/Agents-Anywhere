@@ -3,7 +3,7 @@ import SpecRuneKit
 
 /// 把主 app 的 Connector API 桥成 `SpecRuneKit` 需要的传输能力。
 ///
-/// 只用官方 Server 既有的两条端点：`shell/exec` 与 `fs/readText`。
+/// 只用官方 Server 既有的三条端点：`shell/exec`、`fs/readText` 与 `fs/readDir`。
 /// 放在 `Views/SpecRune/` 而不是 `Business/`，是因为 `Business/` 属于
 /// ClientCore target，而 ClientCore 并不依赖 SpecRuneKit（避免为跨包可见性
 /// 给一批既有类型加 `public`）。
@@ -57,7 +57,7 @@ nonisolated struct SpecRuneConnectorTransport: SpecRuneTransport, @unchecked Sen
                 request: V2WorkspaceTextRequest(path: path)
             )
             guard !response.binary else { return nil }
-            return SpecRuneTextFile(content: response.content, truncated: response.truncated)
+            return SpecRuneTextFile(content: response.content, size: response.size, truncated: response.truncated)
         } catch let error as HTTPError {
             if Self.isMissingFile(error) { return nil }
             throw error

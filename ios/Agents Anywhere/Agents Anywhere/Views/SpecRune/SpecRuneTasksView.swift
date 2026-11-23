@@ -472,6 +472,10 @@ private struct SpecRuneTaskDetailView: View {
     @State private var tab: DetailTab = .overview
     /// 当前展开的规范路径（同一时刻只展开一条）。
     @State private var expandedSpec: String?
+    /// 调研清单展开项：nil = 未点过（默认展开第一项），"" = 全部收起。
+    @State private var openResearch: String?
+    /// 记录清单展开项：语义同 `openResearch`。
+    @State private var openRecord: String?
 
     /// 详情维度：概览 + 每种存在的产物文档，与 Mac 面板的标签条一致。
     enum DetailTab: Hashable {
@@ -482,7 +486,19 @@ private struct SpecRuneTaskDetailView: View {
     private var summary: SpecRuneTaskSummary { detail.summary }
 
     private var availableDocs: [SpecRuneDocKind] {
-        SpecRuneDocKind.allCases.filter { detail.docs[$0] != nil }
+        SpecRuneDocKind.allCases.filter(hasTab)
+    }
+
+    /// 维度是否可见：调研/记录还看清单是否非空（与 DSH 面板一致）。
+    private func hasTab(_ kind: SpecRuneDocKind) -> Bool {
+        switch kind {
+        case .research:
+            return !detail.researchFiles.isEmpty || detail.docs[.research] != nil
+        case .record:
+            return !detail.sessionRecords.isEmpty || detail.docs[.record] != nil
+        default:
+            return detail.docs[kind] != nil
+        }
     }
 
     private var tabs: [DetailTab] {
@@ -515,7 +531,7 @@ private struct SpecRuneTaskDetailView: View {
                                 .foregroundStyle(AppTheme.secondaryText(colorScheme))
                         }
                     case let .doc(kind):
-                        docBody(kind)
+                        docTab(kind)
                     }
                 }
                 .padding(20)
@@ -573,6 +589,127 @@ private struct SpecRuneTaskDetailView: View {
                 .font(.footnote)
                 .foregroundStyle(AppTheme.secondaryText(colorScheme))
         }
+    }
+
+    /// 单个文档维度：调研/记录走多文件清单，其它文档渲染单份正文。
+    @ViewBuilder
+    private func docTab(_ kind: SpecRuneDocKind) -> some View {
+        switch kind {
+        case .research:
+            researchBody
+        case .record:
+            recordBody
+        default:
+            docBody(kind)
+        }
+    }
+
+    /// 调研清单：清单非空时用它；否则退化为单文件 `research.md`（与面板同形态）。
+    private var researchItems: [SpecRuneResearchFile] {
+        if !detail.researchFiles.isEmpty { return detail.researchFiles }
+        guard let doc = detail.docs[.research] else { return [] }
+        return [SpecRuneResearchFile(
+            name: SpecRuneDocKind.research.fileName,
+            bytes: doc.bytes,
+            truncated: doc.truncated,
+            content: doc.content
+        )]
+    }
+
+    /// 记录清单：会话记录已按文件名倒序，`record.md` 固定附在末尾。
+    private var recordItems: [SpecRuneSessionRecord] {
+        var items = detail.sessionRecords
+        if let doc = detail.docs[.record] {
+            items.append(SpecRuneSessionRecord(
+                name: SpecRuneDocKind.record.fileName,
+                at: "",
+                bytes: doc.bytes,
+                truncated: doc.truncated,
+                content: doc.content,
+                body: doc.content,
+                meta: SpecRuneSessionMeta()
+            ))
+        }
+        return items
+    }
+
+    /// 当前展开的调研项：nil 表示还没点过（默认展开第一项），"" 表示全部收起。
+    private var openResearchName: String {
+        openResearch ?? researchItems.first?.name ?? ""
+    }
+
+    private var openRecordName: String {
+        openRecord ?? recordItems.first?.name ?? ""
+    }
+
+    private func toggleResearch(_ name: String) {
+        withAnimation(expandAnimation) {
+            openResearch = openResearchName == name ? "" : name
+        }
+    }
+
+    private func toggleRecord(_ name: String) {
+        withAnimation(expandAnimation) {
+            openRecord = openRecordName == name ? "" : name
+        }
+    }
+
+    /// 调研维度：标题「调研报告」+ 计数，逐项展开 Markdown。
+    private var researchBody: some View {
+        let items = researchItems
+        return sectionBlock(title: "调研报告", trailing: "\(items.count)") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(items) { item in
+                    SpecRuneDocListRow(
+                        name: item.name,
+                        bytes: item.bytes,
+                        truncated: item.truncated,
+                        isOpen: openResearchName == item.name,
+                        onToggle: { toggleResearch(item.name) }
+                    ) {
+                        SpecRuneDocMarkdown(text: item.content, bytes: item.bytes)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 记录维度：标题「记录」+ 计数；展开先 meta 行，再显示去 frontmatter 的正文。
+    private var recordBody: some View {
+        let items = recordItems
+        return sectionBlock(title: "记录", trailing: "\(items.count)") {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(items) { item in
+                    SpecRuneDocListRow(
+                        name: item.name,
+                        at: item.at,
+                        bytes: item.bytes,
+                        truncated: item.truncated,
+                        isOpen: openRecordName == item.name,
+                        onToggle: { toggleRecord(item.name) }
+                    ) {
+                        if let line = metaLine(item.meta) {
+                            Text(verbatim: line)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                        }
+                        // 面板在 body 为空时回退显示含 frontmatter 的全文。
+                        SpecRuneDocMarkdown(
+                            text: item.body.isEmpty ? item.content : item.body,
+                            bytes: item.bytes
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /// meta 展示行：title · status · created · branch，空值省略。
+    private func metaLine(_ meta: SpecRuneSessionMeta) -> String? {
+        let parts = [meta.title, meta.status, meta.created, meta.branch]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// 概览：与 DSH 面板同颗粒度——进度 / 检查清单 / 上下文 / 关联。
@@ -819,6 +956,11 @@ private enum SpecRunePresentation {
         }
         return nil
     }
+
+    /// 清单项大小：KB，至少显示 1（与面板 `max(1, round(bytes / 1024))` 同口径）。
+    static func kbLabel(_ bytes: Int) -> String {
+        "\(max(1, Int((Double(max(bytes, 0)) / 1024).rounded()))) KB"
+    }
 }
 
 struct SpecRuneChecklistItem {
@@ -846,6 +988,116 @@ private struct FlowChips: View {
                     .accessibilityLabel(Text(verbatim: row.reason.isEmpty ? row.file : "\(row.file)：\(row.reason)"))
             }
         }
+    }
+}
+
+/// 清单展开区正文：超过字符上限时只渲染前 16 000 字符并提示。
+///
+/// 1 MiB 的正文可能有近百万字符、数万段落，整篇交给 `ChatMarkdownView`
+/// 会让 SwiftUI 递归解析爆栈（2026-11-24 实跑 `research/big.md` 触发 SIGSEGV；
+/// 64 000 字符对短段落仍会爆栈）。截断只作用于清单展开区，不改
+/// `ChatMarkdownView` 的通用渲染逻辑。
+private struct SpecRuneDocMarkdown: View {
+    let text: String
+    /// 原始字节数（未截断前），用于提示。
+    let bytes: Int
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let clamped = SpecRuneDocClamp.clamp(text)
+        ChatMarkdownView(text: clamped.text, blockSpacing: 0, reservesStreamingHeight: false)
+        if clamped.clamped {
+            Text(verbatim: "正文过大，仅显示前 \(SpecRuneDocClamp.maxCharacters) 字符（原始 \(bytes) 字节）")
+                .font(.caption)
+                .foregroundStyle(AppTheme.secondaryText(colorScheme))
+        }
+    }
+}
+
+/// 调研/记录清单的一行：箭头 + 文件名 + 可选时间 + 大小；展开区显示正文。
+private struct SpecRuneDocListRow<Content: View>: View {
+    let name: String
+    /// 记录时间（调研清单不显示）。
+    let at: String
+    let bytes: Int
+    let truncated: Bool
+    let isOpen: Bool
+    let onToggle: () -> Void
+    let content: () -> Content
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(
+        name: String,
+        at: String = "",
+        bytes: Int,
+        truncated: Bool,
+        isOpen: Bool,
+        onToggle: @escaping () -> Void,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.name = name
+        self.at = at
+        self.bytes = bytes
+        self.truncated = truncated
+        self.isOpen = isOpen
+        self.onToggle = onToggle
+        self.content = content
+    }
+
+    /// VoiceOver 播报：文件名 + 记录时间（有则拼上）+ 大小。
+    private var accessibilityText: String {
+        let size = SpecRunePresentation.kbLabel(bytes)
+        return at.isEmpty ? "\(name)，\(size)" : "\(name)，\(at)，\(size)"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: onToggle) {
+                HStack(spacing: 8) {
+                    AppSymbol(isOpen ? "chevron.down" : "chevron.right", size: 11)
+                        .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                    Text(verbatim: name)
+                        .font(.subheadline.monospaced())
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if !at.isEmpty {
+                        Text(verbatim: at)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                            .lineLimit(1)
+                    }
+                    Text(verbatim: SpecRunePresentation.kbLabel(bytes))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: accessibilityText))
+            .accessibilityValue(Text(verbatim: isOpen ? "已展开" : "已收起"))
+
+            if isOpen {
+                VStack(alignment: .leading, spacing: 8) {
+                    content()
+                    if truncated {
+                        Text(verbatim: "已截断：原始 \(bytes) 字节，仅显示前 1 MiB")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+                .padding(.bottom, 12)
+            }
+        }
+        .background(AppTheme.groupedFill(colorScheme), in: .rect(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(AppTheme.secondaryControlStroke(colorScheme).opacity(0.5))
+        )
     }
 }
 

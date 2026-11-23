@@ -2,7 +2,7 @@
   "$id": "urn:agents-anywhere:specrune:1.0:task-detail-response",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "SpecRuneTaskDetailResponse",
-  "description": "GET /api/v2/connectors/{id}/specrune/task?repo=&ref= 的返回体。= specrune task show --json 摘要 + 产物文档正文 + 上下文清单 + 目录时间 + 调研目录清单。字段与 ~/.dsh/specrune/panel/lib/index.js 的 /specrune/task 处理器一致。",
+  "description": "GET /api/v2/connectors/{id}/specrune/task?repo=&ref= 的返回体。= specrune task show --json 摘要 + 产物文档正文 + 上下文清单 + 目录时间 + 调研文件清单 + 会话记录清单。字段与 ~/.dsh/specrune/panel/lib/index.js 的 /specrune/task 处理器一致。",
   "type": "object",
   "additionalProperties": true,
   "required": ["dir", "name", "title", "status", "docs", "files", "context"],
@@ -53,8 +53,13 @@
     },
     "researchFiles": {
       "type": "array",
-      "description": "[FS] 调研目录（research/*.md）清单，按 mtime 倒序；无 research/ 目录时为空数组。用于 research 维度多份报告。",
+      "description": "[FS] 调研清单，聚合任务根 research.md、任务根 research-<slug>.md（历史旧命名）与 research/ 第一层 .md（大小写不敏感、不递归）；同名时 research/ 内版本优先。DSH 面板按 mtime 倒序，iOS 客户端按文件名升序（不取 mtime）。无任何来源时为空数组。用于 research 维度多份报告。",
       "items": { "$ref": "#/$defs/ResearchFile" }
+    },
+    "sessionRecords": {
+      "type": "array",
+      "description": "[FS] 匹配当前任务的会话记录（.specrune/sessions/*.md，frontmatter task 等于任务目录名或去掉 NN-MM- 前缀的短名），按文件名（UTC 时间戳）倒序；目录不存在时为空数组。用于 record 维度会话记录清单。",
+      "items": { "$ref": "#/$defs/SessionRecord" }
     },
     "context": {
       "$ref": "#/$defs/TaskContext",
@@ -101,11 +106,38 @@
       "additionalProperties": true,
       "required": ["name", "bytes", "truncated", "content"],
       "properties": {
-        "name": { "type": "string", "description": "[FS] 文件名（research/<name>）。" },
-        "at": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "description": "[FS] mtime（ISO 8601）。" },
+        "name": { "type": "string", "description": "[FS] 文件名（任务根 research*.md 或 research/<name>）。" },
+        "at": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "description": "[FS] mtime（ISO 8601）。iOS 客户端不取 mtime，可省略或为空。" },
         "bytes": { "type": "integer", "minimum": 0 },
         "truncated": { "type": "boolean" },
         "content": { "type": "string", "description": "[FS] 正文，最多 1 MiB。" }
+      }
+    },
+    "SessionRecord": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "bytes", "truncated", "content", "body", "meta"],
+      "properties": {
+        "name": { "type": "string", "description": "[FS] 文件名（.specrune/sessions/<name>）。" },
+        "at": { "anyOf": [{ "type": "string" }, { "type": "null" }], "default": null, "description": "[FS] 记录时间，客户端来源不同：DSH 宿主面板返回文件 mtime（ISO 8601）；iOS 客户端不取 mtime，改用文件名中的 UTC 时间戳并格式化成本地时区 yyyy-MM-dd HH:mm:ss；文件名无合法时间戳时为空。" },
+        "bytes": { "type": "integer", "minimum": 0, "description": "[FS] 真实字节数（未截断前）。" },
+        "truncated": { "type": "boolean" },
+        "content": { "type": "string", "description": "[FS] 正文全文（含 frontmatter），最多 1 MiB。" },
+        "body": { "type": "string", "description": "[FS] 去掉 frontmatter 段及其后连续空行的正文。" },
+        "meta": { "$ref": "#/$defs/SessionMeta" }
+      }
+    },
+    "SessionMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "frontmatter 的展示用元信息；空值省略对应键。",
+      "properties": {
+        "title": { "type": "string" },
+        "status": { "type": "string" },
+        "created": { "type": "string" },
+        "developer": { "type": "string" },
+        "platform": { "type": "string" },
+        "branch": { "type": "string" }
       }
     },
     "TaskContext": {

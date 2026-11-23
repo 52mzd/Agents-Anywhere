@@ -31,6 +31,21 @@ ChatMarkdownView(text: doc, blockSpacing: 0, reservesStreamingHeight: false)
 全文沿用它时，某个宽度下测出的偏大高度会被永久保留；**换宽度（开关侧栏、横竖屏）
 等于换一组历史值，表现为间距随宽度变化**——这是最容易误判成「CSS/排版问题」的现象。
 
+## 大文本必须 clamp（2026-11-24 实录）
+
+`ChatMarkdownView` 把整篇文本切块后交给 Textual；**1 MiB / 大量短段落**会让
+SwiftUI `Text.resolve` / `ConcatenatedTextStorage.resolve` 递归爆栈（SIGSEGV，
+递归深度约 16 300 层）。实测：1 MiB（约 90 000 短段落）直接崩溃；先 clamp 到
+64 000 字符仍崩溃（约 8 000 段 × 2 层 ≈ 16 000 层）；**16 000 字符**安全。
+
+契约：清单类展开区（SpecRune 调研/记录）在把正文交给 `ChatMarkdownView` 前，
+必须经 `SpecRuneKit` 的 `SpecRuneDocClamp.clamp`（默认 16 000 字符）截断；
+截断提示要保留原始字节数（`bytes`），不要把「仅显示前 1 MiB」当成展示上限。
+通用 `ChatMarkdownView` 组件不改，避免影响聊天流式渲染。
+
+验证：模拟器实跑展开任务目录下的 1.9 MB 调研报告夹具，确认正文出现、两条提示
+（clamp 与 1 MiB）显示、app 不崩溃；崩溃日志在修复后不再新增。
+
 ## 取消不能丢结果
 
 `.task(id:)` 解析完成后一度写成 `guard !Task.isCancelled, ...`。视图身份稳定时

@@ -26,7 +26,7 @@
       "model": "SpecRuneTaskDetailResponse",
       "path": "schemas/task-detail.response.schema.json",
       "slug": "task-detail-response",
-      "sha256": "09f81aba1f06598f399e5c215fda1b866d55a0f62ad73202654c46cc449f0ad1"
+      "sha256": "ae061485ce712a45f81b07c829ef5eb3785017b2786aff35fedacf193798ace2"
     },
     {
       "direction": "egress",

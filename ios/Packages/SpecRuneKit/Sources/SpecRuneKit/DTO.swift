@@ -104,11 +104,95 @@ public nonisolated struct SpecRuneTaskList: Decodable, Hashable, Sendable {
 /// 任务文档正文（`prd.md` / `design.md` / `implement.md` / `record.md` / `research.md`）。
 public nonisolated struct SpecRuneDoc: Hashable, Sendable {
     public let content: String
+    /// 真实字节数（未截断前）。
+    public let bytes: Int
     public let truncated: Bool
 
-    public init(content: String, truncated: Bool = false) {
+    public init(content: String, bytes: Int, truncated: Bool = false) {
         self.content = content
+        self.bytes = bytes
         self.truncated = truncated
+    }
+}
+
+/// 调研清单中的一份报告。
+///
+/// 来源与 DSH 面板 `readResearchFiles` 一致：任务根 `research.md`、
+/// 根 `research-<slug>.md`、`research/` 第一层 `.md`。iOS 不取 mtime，
+/// 因此没有时间字段；`bytes` 是真实字节数（未截断前）。
+public nonisolated struct SpecRuneResearchFile: Hashable, Sendable, Identifiable {
+    public let name: String
+    public let bytes: Int
+    public let truncated: Bool
+    public let content: String
+
+    public var id: String { name }
+
+    public init(name: String, bytes: Int, truncated: Bool, content: String) {
+        self.name = name
+        self.bytes = bytes
+        self.truncated = truncated
+        self.content = content
+    }
+}
+
+/// 会话记录 frontmatter 的展示用元信息；空值省略（nil）。
+public nonisolated struct SpecRuneSessionMeta: Hashable, Sendable {
+    public let title: String?
+    public let status: String?
+    public let created: String?
+    public let developer: String?
+    public let platform: String?
+    public let branch: String?
+
+    public init(
+        title: String? = nil,
+        status: String? = nil,
+        created: String? = nil,
+        developer: String? = nil,
+        platform: String? = nil,
+        branch: String? = nil
+    ) {
+        self.title = title
+        self.status = status
+        self.created = created
+        self.developer = developer
+        self.platform = platform
+        self.branch = branch
+    }
+}
+
+/// 一条匹配当前任务的会话记录（`.specrune/sessions/*.md`）。
+///
+/// `content` 保留全文（含 frontmatter），`body` 去掉 frontmatter 段供展开区
+/// 渲染；`at` 由文件名中的 UTC 时间戳转成本地时区文本，解析失败为空。
+public nonisolated struct SpecRuneSessionRecord: Hashable, Sendable, Identifiable {
+    public let name: String
+    public let at: String
+    public let bytes: Int
+    public let truncated: Bool
+    public let content: String
+    public let body: String
+    public let meta: SpecRuneSessionMeta
+
+    public var id: String { name }
+
+    public init(
+        name: String,
+        at: String,
+        bytes: Int,
+        truncated: Bool,
+        content: String,
+        body: String,
+        meta: SpecRuneSessionMeta
+    ) {
+        self.name = name
+        self.at = at
+        self.bytes = bytes
+        self.truncated = truncated
+        self.content = content
+        self.body = body
+        self.meta = meta
     }
 }
 
@@ -129,21 +213,29 @@ public nonisolated struct SpecRuneContextRow: Hashable, Sendable, Identifiable {
     }
 }
 
-/// 任务详情：CLI 摘要 + 文档正文 + 上下文清单。
+/// 任务详情：CLI 摘要 + 文档正文 + 上下文清单 + 调研/记录清单。
 public nonisolated struct SpecRuneTaskDetail: Hashable, Sendable {
     public let summary: SpecRuneTaskSummary
     public let docs: [SpecRuneDocKind: SpecRuneDoc]
     /// implement.jsonl + check.jsonl 合并（与面板概览「上下文」同源）。
     public let context: [SpecRuneContextRow]
+    /// 调研清单（任务根 `research*.md` + `research/` 第一层 `.md`），按文件名升序。
+    public let researchFiles: [SpecRuneResearchFile]
+    /// 匹配当前任务的会话记录，按文件名倒序。
+    public let sessionRecords: [SpecRuneSessionRecord]
 
     public init(
         summary: SpecRuneTaskSummary,
         docs: [SpecRuneDocKind: SpecRuneDoc],
-        context: [SpecRuneContextRow] = []
+        context: [SpecRuneContextRow] = [],
+        researchFiles: [SpecRuneResearchFile] = [],
+        sessionRecords: [SpecRuneSessionRecord] = []
     ) {
         self.summary = summary
         self.docs = docs
         self.context = context
+        self.researchFiles = researchFiles
+        self.sessionRecords = sessionRecords
     }
 }
 

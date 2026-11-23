@@ -31,7 +31,7 @@ iOS  SpecRuneKit 组合成下列逻辑端点   ← 本契约定义字段结构
 
 - **repo 参数**：Connector 收到的 `repo` 必须是该 Connector 工作设备上的绝对路径，且目录内存在 `.specrune/workflow.md`（证明是 SpecRune 项目）。不满足返回 `400 not_a_specrune_project`。**不做默认值**——自动取会话 workspace 是后续版本的事，1.0 一律显式传。
 - **路径约束**：任务目录、文档、spec 引用文件一律解析后校验落在 `repo` 内（`relative` 不以 `..` 开头且非绝对路径），越界返回 `403 path_outside_repo`。
-- **截断**：任何正文（`docs.*.content`、`spec.content`、`researchFiles[].content`）按 1 MiB（1048576 字节）生切，超长时 `truncated=true` 并给出 `bytes`（真实字节数）。客户端据此提示，不自行拼接。
+- **截断**：任何正文（`docs.*.content`、`spec.content`、`researchFiles[].content`、`sessionRecords[].content`）按 1 MiB（1048576 字节）生切，超长时 `truncated=true` 并给出 `bytes`（真实字节数）。客户端据此提示，不自行拼接。
 - **字段来源标注**：字段旁 `[CLI]` 表示直接透传 CLI JSON；`[FS]` 表示 Connector 读文件/stat 得到；`[DERIVED]` 表示 Connector 基于前两者计算。
 - **未知字段**：客户端保留不认识的可选字段，不因新增字段报错（`additionalProperties: true` 在响应根上）。
 - **不实现**：gh/GitHub 集成、worktree 写操作、升级器、项目接入向导、DSH slot（会话行按钮/欢迎层）一律不在 1.0。
@@ -48,6 +48,16 @@ iOS  SpecRuneKit 组合成下列逻辑端点   ← 本契约定义字段结构
 
 `.../specrune/*` 是 Server 侧对外路径；Connector 侧 RPC 方法一一对应：`specrune.projects`、`specrune.tasks`、`specrune.task`、`specrune.spec`、`specrune.sessionTask`。方法名与返回体在此一并冻结，避免两端各写一套。
 
+## 任务详情的调研与记录清单
+
+`task-detail` 除单份文档正文外，还返回两份清单，客户端据此渲染「调研」「记录」维度：
+
+- **调研 `researchFiles`**：聚合三种来源——任务根 `research.md`、任务根 `research-<slug>.md`（历史旧命名）、`research/` 第一层 `.md`（大小写不敏感、不递归）。同名去重时 `research/` 内版本优先；每份按 1 MiB 字节截断，`bytes` 为真实字节数。DSH 面板按文件 mtime 倒序；iOS 端不取 mtime（不新增 Connector 字段），改按文件名升序，清单也不显示修改时间。
+- **记录 `sessionRecords`**：扫描 `.specrune/sessions/*.md`，只收 frontmatter `task` 等于任务目录名（或去掉 `NN-MM-` 前缀的短名）的记录；`id`/`task` 为空值、缺闭合 `---` 的记录跳过。`content` 保留全文（含 frontmatter），`body` 去掉 frontmatter 段与后续空行，`meta` 取 `title`/`status`/`created`/`developer`/`platform`/`branch`（空值省略），`at` 在 iOS 客户端由文件名中的 UTC 时间戳转成本地时区 `yyyy-MM-dd HH:mm:ss`（DSH 宿主返回 mtime，见「与现有实现的对齐」）。按文件名（UTC 时间戳）倒序，同样 1 MiB 截断。
+- **`record.md`**：任务根 `record.md` 仍进 `docs.record`，客户端把它作为历史兼容项固定附在记录清单末尾（不参与会话记录排序）。
+
+两个清单都容错：目录不存在返回空数组，单个文件读取失败跳过，不拖垮任务详情的其它字段。
+
 ## 错误响应
 
 非 2xx 统一返回 `{ "error": string, "code"?: string }`。已分配的 `code`：
@@ -63,7 +73,8 @@ iOS  SpecRuneKit 组合成下列逻辑端点   ← 本契约定义字段结构
 
 ## 与现有实现的对齐
 
-- 字段语义以 `~/.dsh/specrune/panel/lib/index.js` 的 `/specrune/projects`、`/specrune/tasks`、`/specrune/task`、`/specrune/spec`、`/specrune/session-task` 处理器为准，逐字段核对（tasks 的 `at`/`born` 秒级时间戳、task 的 `docs.files`/`docs.docs`/`times`/`researchFiles`/`context` 拼装、spec 的 `.specrune/spec/` 前缀校验）。
+- 字段语义以 `~/.dsh/specrune/panel/lib/index.js` 的 `/specrune/projects`、`/specrune/tasks`、`/specrune/task`、`/specrune/spec`、`/specrune/session-task` 处理器为准，逐字段核对（tasks 的 `at`/`born` 秒级时间戳、task 的 `docs.files`/`docs.docs`/`times`/`researchFiles`/`sessionRecords`/`context` 拼装、spec 的 `.specrune/spec/` 前缀校验）。
+- **时间字段的客户端差异**：DSH 宿主面板的 `researchFiles[].at` 与 `sessionRecords[].at` 都是文件 mtime（ISO 8601）；iOS 客户端不取 mtime（不新增 Connector 字段）——`researchFiles[]` 不提供时间，`sessionRecords[].at` 改由文件名中的 UTC 时间戳格式化成本地 `yyyy-MM-dd HH:mm:ss`（文件名无合法时间戳时为空）。除这两个字段外，其余字段语义仍以 `index.js` 为准。
 - 不照抄宿主私有路由（`/specrune/ui-state`、`/specrune/host`、`/specrune/project/update*`、`/specrune/worktrees*` 等）——那些是桌面宿主 UI 状态或写操作，不属于只读看板。
 
 ## 实现说明：手机端走既有端点，不新增 Server 路由
@@ -73,10 +84,10 @@ iOS 端（`ios/Packages/SpecRuneKit`）**没有**按上面的端点表实现 HTT
 | 需要的数据 | 既有端点 |
 | --- | --- |
 | 任务列表 / 任务摘要 | `POST /connectors/{id}/shell/exec?root=` 跑 `specrune task list --json --all` 或 `task show <ref> --json` |
-| 文档正文、`.specrune/.version`、`.runtime/sessions/*.json` | `POST /connectors/{id}/fs/readText?root=` |
-| 目录内容 | `POST /connectors/{id}/fs/readDir?root=` |
+| 文档正文、`.specrune/.version`、`.runtime/sessions/*.json`、`.specrune/sessions/*.md` | `POST /connectors/{id}/fs/readText?root=` |
+| 目录内容（含 `research/` 与 `.specrune/sessions/` 的清单） | `POST /connectors/{id}/fs/readDir?root=` |
 
-因此本契约在手机端的作用是**字段结构权威**（`TaskListItem` / 详情的 `docs`、`files`、`times`、`researchFiles`、`context` 形状、1 MiB 截断语义），端点表那一列是「逻辑端点」，由客户端自行组合。这也意味着**新增 specrune 功能不需要改 Server 或 Connector**。
+因此本契约在手机端的作用是**字段结构权威**（`TaskListItem` / 详情的 `docs`、`files`、`times`、`researchFiles`、`sessionRecords`、`context` 形状、1 MiB 截断语义），端点表那一列是「逻辑端点」，由客户端自行组合。这也意味着**新增 specrune 功能不需要改 Server 或 Connector**。
 
 错误码同样在客户端按「退出码 + stderr + 解析结果」归类，语义与下表一致。
 
