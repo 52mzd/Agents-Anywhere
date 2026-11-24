@@ -5,10 +5,11 @@ import Testing
 /// 正文分块：每块 ≤ 16 000 字符，优先 Markdown 边界，拼接后与原文一致。
 @Suite("正文分块")
 struct SpecRuneDocChunksTests {
-    @Test("默认每块上限为 16 000 字符")
+    @Test("默认每段上限不得超过实测安全上限 16 000")
     func keepsSafeChunkLimit() {
+        // 2026-11-24 实测：64 000 字符（约 8000 个短段落 × 2 层嵌套）仍触发
+        // SwiftUI Text.resolve 递归爆栈；16 000 安全。调大必须重新实跑夹具。
         #expect(SpecRuneDocChunks.maxCharacters == 16_000)
-        #expect(SpecRuneDocChunks.maxCharacters == SpecRuneDocClamp.maxCharacters)
     }
 
     @Test("空正文返回空数组")

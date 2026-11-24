@@ -6,7 +6,7 @@
 
 | 文件 | 内容 |
 | --- | --- |
-| [ios/Packages/SpecRuneKit/](../../ios/Packages/SpecRuneKit/) | 独立 SPM 包：`DTO.swift` / `Errors.swift` / `Transport.swift` / `SpecRuneClient.swift` / `SpecRuneDocClamp.swift` / `SpecRuneDocChunks.swift` |
+| [ios/Packages/SpecRuneKit/](../../ios/Packages/SpecRuneKit/) | 独立 SPM 包：`DTO.swift` / `Errors.swift` / `Transport.swift` / `SpecRuneClient.swift` / `SpecRuneDocChunks.swift` |
 | [SpecRuneConnectorTransport.swift](../../ios/Agents%20Anywhere/Agents%20Anywhere/Views/SpecRune/SpecRuneConnectorTransport.swift) | 把 `shell/exec`、`fs/readText` 与 `fs/readDir` 桥成 `SpecRuneTransport` |
 | [SpecRuneBoardModel.swift](../../ios/Agents%20Anywhere/Agents%20Anywhere/Views/SpecRune/SpecRuneBoardModel.swift) | 逐项加载态（项目探测 / 任务列表 / 详情 / 规范正文） |
 | [SpecRuneTasksView.swift](../../ios/Agents%20Anywhere/Agents%20Anywhere/Views/SpecRune/SpecRuneTasksView.swift) | 三栏自适应看板 + 任务行 + 任务详情 |

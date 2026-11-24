@@ -47,7 +47,7 @@ SwiftUI `Text.resolve` / `ConcatenatedTextStorage.resolve` 递归爆栈（SIGSEG
 几十段在真机上会卡死/闪退（2026-11-24 真机实录），必须显式追加。`LazyVStack` 在本
 详情页的嵌套滚动上下文里不渲染正文（2026-11-24 实跑），不要使用。切点优先空行、
 其次标题行前、再行尾；``` / ~~~ 围栏内不切（可短暂超过 16 000，直到闭合或硬上限
-32 000）；顺序拼接必须等于原文。`SpecRuneDocClamp` 保留作兜底。
+32 000）；顺序拼接必须等于原文。段大小上限只在 `SpecRuneDocChunks.maxCharacters` 定义一处。
 数据层的 1 MiB 截断提示保留，但文案要说明「仅读取前 1 MiB」，不要暗示展示上限。
 通用 `ChatMarkdownView` 组件不改，避免影响聊天流式渲染。
 

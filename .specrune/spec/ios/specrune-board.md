@@ -58,7 +58,7 @@
 - `SpecRuneTaskDetail` 带 `researchFiles` / `sessionRecords`；两个聚合各自容错，失败返回空数组，不拖垮详情。
 - tab 条件：`research` = `researchFiles` 非空或 `docs[.research]` 存在；`record` = `sessionRecords` 非空或 `docs[.record]` 存在。
 - 正文统一分块渲染：清单展开区（调研/记录）、其他文档 tab（`docBody`）与规范展开（`specRow`）都交给 `SpecRuneChunkedMarkdown`——正文先经 `SpecRuneDocChunks.split`（默认每块 16 000 字符）切成多块，再由 `VStack` + 分段渲染：初始只渲染第 1 段，点「显示更多（剩余 N 段）」每次追加 1 段，全部内容可查看。一次性铺开几十段在真机上会卡死/闪退（2026-11-24 真机实录），必须显式追加。`LazyVStack` 在本详情页的嵌套滚动上下文里不渲染正文（2026-11-24 实跑），不要使用。外层详情页已有 `ScrollView`，容器内不再嵌套滚动。
-- 切分按行扫描、跟踪 ``` / ~~~ 围栏：优先空行、其次标题行前、再行尾；围栏内不切（可短暂超过 16 000，直到闭合或硬上限 32 000 = 2 倍上限）；所有块顺序拼接必须与原文完全一致。`SpecRuneDocClamp` 保留作兜底（不再用于清单展开区），`SpecRuneDocClampTests` 继续通过。
+- 切分按行扫描、跟踪 ``` / ~~~ 围栏：优先空行、其次标题行前、再行尾；围栏内不切（可短暂超过 16 000，直到闭合或硬上限 32 000 = 2 倍上限）；所有块顺序拼接必须与原文完全一致。段大小上限只在 `SpecRuneDocChunks.maxCharacters` 定义一处，`SpecRuneDocChunksTests` 钉住它不超过 16 000。
 - 数据层 1 MiB 截断提示保留，文案「原文超过 1 MiB，仅读取前 1 MiB（原始 N 字节）」——1 MiB 是读取上限，不是展示上限。
 - 单段解析失败时该段静默空白（`ChatMarkdownView` 解析失败直接返回，不做兜底）；段与段独立，其他段照常渲染。Markdown 解析失败极罕见，不为它增加双解析成本。
 

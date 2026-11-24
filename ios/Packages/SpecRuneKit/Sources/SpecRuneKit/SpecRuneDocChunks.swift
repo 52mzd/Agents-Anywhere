@@ -3,16 +3,19 @@ import Foundation
 /// 把文档正文切成可独立渲染的多块，每块交给一个 `ChatMarkdownView`。
 ///
 /// `ChatMarkdownView` 会把整篇文本一次解析成 blocks；1 MiB / 数万短段落会让
-/// SwiftUI `Text.resolve` 递归爆栈（2026-11-24 实跑 SIGSEGV）。16 000 字符是
-/// 单次渲染的安全上限（见 `SpecRuneDocClamp`），但不应是全文的展示上限：
-/// 这里按 Markdown 行边界切成多块，顺序拼接后与原文完全一致。
+/// SwiftUI `Text.resolve` 递归爆栈（2026-11-24 实跑 SIGSEGV；先截到 64 000 字符
+/// 仍崩，递归深度 16301）。16 000 字符是单次渲染的安全上限，但不应是全文的
+/// 展示上限：这里按 Markdown 行边界切成多段，顺序拼接后与原文完全一致。
 ///
 /// 切点优先级：空行之后 > 标题行之前 > 行尾。``` / ~~~ 围栏内不切，可短暂
 /// 超过 `maxCharacters`，直到围栏闭合或达到硬上限
 /// （`maxCharacters * fenceOverflowFactor`），避免把代码块拆成两半。
 public nonisolated enum SpecRuneDocChunks {
-    /// 默认每块上限：16 000 字符（实测 `ChatMarkdownView` 单次渲染的安全上限）。
-    public static let maxCharacters = SpecRuneDocClamp.maxCharacters
+    /// 默认每段上限：16 000 字符（实测 `ChatMarkdownView` 单次渲染的安全上限）。
+    ///
+    /// 调大前必须重新实跑 1.9 MB / 大量短段落夹具：64 000 字符（约 8000 段
+    /// × 2 层嵌套）仍会触发 SwiftUI `Text` 递归爆栈。
+    public static let maxCharacters = 16_000
 
     /// 围栏未闭合时允许超过上限的倍数；超过后强制在行边界（必要时按字符）切开。
     public static let fenceOverflowFactor = 2
