@@ -48,7 +48,12 @@
   app 登录会报 `-34018`（2026-11-24 实录，白等一轮登录）。
 - **实跑要覆盖极端输入**：正常数据通过不代表大文件可用。SpecRune 清单展开
   1 MiB / 大量短段落会触发 SwiftUI `Text.resolve` 递归爆栈；跑一个 1.9 MB
-  调研夹具验证 clamp 与截断提示（见 markdown-rendering.md「大文本必须 clamp」）。
+  调研夹具验证分段渲染与「显示更多」（见 markdown-rendering.md「大文本必须分段渲染」）。
+- **同一个 UI bug 第三次换容器仍不行，停手先问**：2026-11-24 为让大文本全部显示，
+  依次试 LazyVStack → ScrollView+LazyVStack → VStack 全量 → List → TextKit，
+  全部空白或闪退，绕了十几轮。两次无效后应回头拆「单段渲染本身对不对」，
+  而不是继续换容器；每次换都必须在真机上截一张图确认，不要靠模拟器点击工具
+  （idb 在嵌套滚动页会误触收起，验证不可靠，本机实录）。
 - 给 composer / dock 或其祖先加 `.clipped()` / `.frame(height:)` 前先读
   duo-layout.md 的"浮层不豁免祖先裁剪"：指令面板是 offset 到 dock bounds 外的
   浮层，常驻裁剪会让它整块消失，而数据、`isVisible`、AX 树全都正常

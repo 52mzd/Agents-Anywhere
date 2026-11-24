@@ -31,7 +31,7 @@ ChatMarkdownView(text: doc, blockSpacing: 0, reservesStreamingHeight: false)
 全文沿用它时，某个宽度下测出的偏大高度会被永久保留；**换宽度（开关侧栏、横竖屏）
 等于换一组历史值，表现为间距随宽度变化**——这是最容易误判成「CSS/排版问题」的现象。
 
-## 大文本必须分块（2026-11-24 实录）
+## 大文本必须分段渲染（2026-11-24 实录）
 
 `ChatMarkdownView` 把整篇文本切块后交给 Textual；**1 MiB / 大量短段落**会让
 SwiftUI `Text.resolve` / `ConcatenatedTextStorage.resolve` 递归爆栈（SIGSEGV，
@@ -51,8 +51,16 @@ SwiftUI `Text.resolve` / `ConcatenatedTextStorage.resolve` 递归爆栈（SIGSEG
 数据层的 1 MiB 截断提示保留，但文案要说明「仅读取前 1 MiB」，不要暗示展示上限。
 通用 `ChatMarkdownView` 组件不改，避免影响聊天流式渲染。
 
-验证：模拟器实跑展开任务目录下的 1.9 MB 调研报告夹具，确认分块正文出现、可滚动
-到底、只显示 1 MiB 读取提示、app 不崩溃；崩溃日志在改动后不再新增。
+验证：真机实跑展开 1.9 MB 调研夹经，确认首段正文出现、点「显示更多」能逐段看完、
+只显示 1 MiB 读取提示、不卡死/不闪退；崩溃日志在改动后不再新增。
+
+### 一次全量布局也是死路（2026-11-24 真机实录）
+
+分段切对了但把 27 段一次性放进 `VStack` 仍然崩：真机能进页面、几秒后黑屏闪退。
+`LazyVStack` 在本详情页嵌套滚动上下文不渲染（正文空白），`ScrollView + LazyVStack`
+同样空白，`UITextView`(TextKit) 一次渲染 1 MiB 直接卡死。**唯一稳定解是显式
+「显示更多」逐段追加**（初始 1 段）。排查顺序教训：先验证「单段能不能渲染」，
+再验证「多段怎么放」；不要连着换容器猜，每次换都该在真机上看一眼。
 
 ## 取消不能丢结果
 
