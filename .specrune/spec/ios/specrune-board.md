@@ -17,6 +17,7 @@
 - 排序：按文件名升序（`localizedStandardCompare`）。
 - iOS 不取 mtime：Connector `fs.readDir` 不返回 `modifiedAt`；清单不显示修改时间、无时间排序开关（决策记录见 2026-11-23 会话记录）。
 - 每项 `bytes` 取 `readText` 的 `size`（真实字节数）；正文 1 MiB 字节截断由 Connector `maxBytes` 保证。
+- 调研文件大小没有约定：SpecRune 不限制 `research/<slug>.md` 的字节数，1 MiB 只是面板读取上限。实测本仓库 65 份调研文件平均 8.3 KB、最大 29.7 KB，所以 16 000 字符一段对绝大多数文件足够。
 - 读取失败：单文件跳过；任务目录或 research 目录不可读返回空数组。
 
 **校验与错误矩阵**
@@ -56,18 +57,19 @@
 **契约**
 - `SpecRuneTaskDetail` 带 `researchFiles` / `sessionRecords`；两个聚合各自容错，失败返回空数组，不拖垮详情。
 - tab 条件：`research` = `researchFiles` 非空或 `docs[.research]` 存在；`record` = `sessionRecords` 非空或 `docs[.record]` 存在。
-- 清单展开区正文必须先经 `SpecRuneDocClamp.clamp`（16 000 字符）再交给 `ChatMarkdownView`；超限显示「正文过大，仅显示前 16000 字符（原始 N 字节）」。见 [markdown-rendering.md](./markdown-rendering.md)。
-- 其他文档 tab（`docBody`）与规范展开（`specRow`）尚未统一 clamp，属 follow-up 任务。
+- 正文统一分块渲染：清单展开区（调研/记录）、其他文档 tab（`docBody`）与规范展开（`specRow`）都交给 `SpecRuneChunkedMarkdown`——正文先经 `SpecRuneDocChunks.split`（默认每块 16 000 字符）切成多块，再由 `VStack` + 分段渲染：初始只渲染第 1 段，点「显示更多（剩余 N 段）」每次追加 1 段，全部内容可查看。一次性铺开几十段在真机上会卡死/闪退（2026-11-24 真机实录），必须显式追加。`LazyVStack` 在本详情页的嵌套滚动上下文里不渲染正文（2026-11-24 实跑），不要使用。外层详情页已有 `ScrollView`，容器内不再嵌套滚动。
+- 切分按行扫描、跟踪 ``` / ~~~ 围栏：优先空行、其次标题行前、再行尾；围栏内不切（可短暂超过 16 000，直到闭合或硬上限 32 000 = 2 倍上限）；所有块顺序拼接必须与原文完全一致。`SpecRuneDocClamp` 保留作兜底（不再用于清单展开区），`SpecRuneDocClampTests` 继续通过。
+- 数据层 1 MiB 截断提示保留，文案「原文超过 1 MiB，仅读取前 1 MiB（原始 N 字节）」——1 MiB 是读取上限，不是展示上限。
+- 单段解析失败时该段静默空白（`ChatMarkdownView` 解析失败直接返回，不做兜底）；段与段独立，其他段照常渲染。Markdown 解析失败极罕见，不为它增加双解析成本。
 
 **Wrong vs Correct**
 
 ```swift
-// 错误：把 1 MiB 正文直接交给渲染器（大量短段落 → Text.resolve 递归爆栈）
+// 错误：把 1 MiB 正文整篇交给渲染器（大量短段落 → Text.resolve 递归爆栈）
 ChatMarkdownView(text: item.content, blockSpacing: 0, reservesStreamingHeight: false)
 
-// 正确：先 clamp，再渲染
-let clamped = SpecRuneDocClamp.clamp(item.content)
-ChatMarkdownView(text: clamped.text, blockSpacing: 0, reservesStreamingHeight: false)
+// 正确：先分段，交给「显示更多」容器（每段 ≤ 16 000 字符）
+SpecRuneChunkedMarkdown(text: item.content)
 ```
 
 ```swift
@@ -79,4 +81,4 @@ ChatMarkdownView(text: clamped.text, blockSpacing: 0, reservesStreamingHeight: f
 ## 测试 {#tests}
 
 - `cd ios/Packages/SpecRuneKit && swift test --disable-sandbox`
-- 断言点：调研三来源/排除项/同名去重/文件名升序/1 MiB 截断/读失败跳过；记录匹配/短名兜底/CRLF/meta 空值省略/畸形跳过/文件名倒序/时间解析（含非法日期）/截断；clamp 短文本/超长/空/阈值上限。
+- 断言点：调研三来源/排除项/同名去重/文件名升序/1 MiB 截断/读失败跳过；记录匹配/短名兜底/CRLF/meta 空值省略/畸形跳过/文件名倒序/时间解析（含非法日期）/截断；clamp 短文本/超长/空/阈值上限；分块 空正文/短正文单块/多块上限/围栏不切断/围栏超硬上限/无空行长段/标题前切/空行后切/单行超长/拼接等于原文。

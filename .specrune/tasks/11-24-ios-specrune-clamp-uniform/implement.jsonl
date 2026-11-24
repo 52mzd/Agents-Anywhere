@@ -1,0 +1,3 @@
+{"file":".specrune/spec/ios/specrune-board.md","reason":"SpecRune 看板数据层与渲染契约"}
+{"file":".specrune/spec/ios/markdown-rendering.md","reason":"非流式 Markdown 参数与大文本渲染教训"}
+{"file":"contracts/specrune/1.0/README.md","reason":"字段形状与 1 MiB 截断语义"}

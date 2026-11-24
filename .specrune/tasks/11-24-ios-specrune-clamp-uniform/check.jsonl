@@ -1,0 +1,3 @@
+{"file":".specrune/spec/ios/index.md","reason":"iOS 实跑与签名构建要求"}
+{"file":"docs/specrune-mobile/README.md","reason":"现有取数/验证说明"}
+{"file":".specrune/spec/ios/markdown-rendering.md","reason":"验证非流式渲染与大文本"}

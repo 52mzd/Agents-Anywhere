@@ -1,5 +1,6 @@
 import SpecRuneKit
 import SwiftUI
+import Textual
 
 /// SpecRune「任务」屏。
 ///
@@ -572,17 +573,15 @@ private struct SpecRuneTaskDetailView: View {
         }
     }
 
-    /// 单个文档维度：正文 + 截断提示。
+    /// 单个文档维度：分块渲染的正文 + 1 MiB 读取截断提示。
     @ViewBuilder
     private func docBody(_ kind: SpecRuneDocKind) -> some View {
         if let doc = detail.docs[kind] {
-            // 渲染 markdown；blockSpacing 传 0 —— Textual 自己已有块间距，
-            // 再叠一层会在标题与正文间堆出大片空白。
-            ChatMarkdownView(text: doc.content, blockSpacing: 0, reservesStreamingHeight: false)
+            // 正文按块交给独立的 ChatMarkdownView（块间距 0 由 Textual 自己给）；
+            // 外层已有 ScrollView，容器不再嵌套滚动；长正文靠「显示更多」逐段追加。
+            SpecRuneChunkedMarkdown(text: doc.content)
             if doc.truncated {
-                Text("已截断：原文超过 1 MiB")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                SpecRuneTruncationNote(bytes: doc.bytes)
             }
         } else {
             Text("该任务没有这份文档")
@@ -667,7 +666,7 @@ private struct SpecRuneTaskDetailView: View {
                         isOpen: openResearchName == item.name,
                         onToggle: { toggleResearch(item.name) }
                     ) {
-                        SpecRuneDocMarkdown(text: item.content, bytes: item.bytes)
+                        SpecRuneChunkedMarkdown(text: item.content)
                     }
                 }
             }
@@ -694,9 +693,8 @@ private struct SpecRuneTaskDetailView: View {
                                 .foregroundStyle(AppTheme.secondaryText(colorScheme))
                         }
                         // 面板在 body 为空时回退显示含 frontmatter 的全文。
-                        SpecRuneDocMarkdown(
-                            text: item.body.isEmpty ? item.content : item.body,
-                            bytes: item.bytes
+                        SpecRuneChunkedMarkdown(
+                            text: item.body.isEmpty ? item.content : item.body
                         )
                     }
                 }
@@ -880,11 +878,9 @@ private struct SpecRuneTaskDetailView: View {
                         .font(.caption)
                         .foregroundStyle(.red)
                 case let .loaded(file):
-                    ChatMarkdownView(text: file.content, blockSpacing: 0, reservesStreamingHeight: false)
+                    SpecRuneChunkedMarkdown(text: file.content)
                     if file.truncated {
-                        Text("已截断：原文超过 1 MiB")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                        SpecRuneTruncationNote(bytes: file.size)
                     }
                 }
             }
@@ -991,26 +987,74 @@ private struct FlowChips: View {
     }
 }
 
-/// 清单展开区正文：超过字符上限时只渲染前 16 000 字符并提示。
+/// 文档正文的分段渲染容器。
 ///
-/// 1 MiB 的正文可能有近百万字符、数万段落，整篇交给 `ChatMarkdownView`
-/// 会让 SwiftUI 递归解析爆栈（2026-11-24 实跑 `research/big.md` 触发 SIGSEGV；
-/// 64 000 字符对短段落仍会爆栈）。截断只作用于清单展开区，不改
-/// `ChatMarkdownView` 的通用渲染逻辑。
-private struct SpecRuneDocMarkdown: View {
+/// 正文按 Markdown 行边界切成每段 ≤ 16 000 字符（`SpecRuneDocChunks`），默认
+/// 只渲染第 1 段，点「显示更多」追加下一段。16000 字符是 `ChatMarkdownView`
+/// 单次渲染的安全上限（1 MiB / 数万短段落会触发 SwiftUI `Text.resolve` 递归
+/// 爆栈，2026-11-24 实跑 SIGSEGV）；一次性渲染几十段在真机上仍会卡死/闪退，
+/// 所以用按钮显式追加，而不是全部铺开。
+///
+/// 真实调研文件很小（本仓库 65 份平均 8 KB、最大约 30 KB），绝大多数文件
+/// 一段就能看完；只有接近或超过 16 000 字符时才需要点「显示更多」。
+/// 外层已有 `ScrollView`（任务详情页），容器内不再嵌套滚动。
+private struct SpecRuneChunkedMarkdown: View {
     let text: String
-    /// 原始字节数（未截断前），用于提示。
+    @State private var chunked = Chunked()
+    /// 已渲染的段数；点「显示更多」每次追加 1 段。
+    @State private var visibleChunks = 1
+
+    /// 切分结果与产生它的正文：正文变化后、新切分完成前不渲染旧段。
+    private struct Chunked {
+        var text = ""
+        var chunks: [String] = []
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if chunked.text == text {
+                ForEach(chunked.chunks.prefix(visibleChunks).indices, id: \.self) { index in
+                    ChatMarkdownView(
+                        text: chunked.chunks[index],
+                        blockSpacing: 0,
+                        reservesStreamingHeight: false
+                    )
+                }
+                if visibleChunks < chunked.chunks.count {
+                    Button {
+                        visibleChunks = min(chunked.chunks.count, visibleChunks + 1)
+                    } label: {
+                        Text("显示更多（剩余 \(chunked.chunks.count - visibleChunks) 段）")
+                            .font(.callout)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .padding(.top, 4)
+                }
+            }
+        }
+        .task(id: text) {
+            let requested = text
+            let chunks = await Task.detached(priority: .userInitiated) {
+                SpecRuneDocChunks.split(requested)
+            }.value
+            // 正文已切换时 .task 会被取消：丢弃旧切分，避免写回旧 text 后守卫失败。
+            guard !Task.isCancelled else { return }
+            chunked = Chunked(text: requested, chunks: chunks)
+            visibleChunks = 1
+        }
+    }
+}
+
+/// 数据层 1 MiB 截断提示：1 MiB 是读取上限，不是展示上限。
+private struct SpecRuneTruncationNote: View {
     let bytes: Int
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        let clamped = SpecRuneDocClamp.clamp(text)
-        ChatMarkdownView(text: clamped.text, blockSpacing: 0, reservesStreamingHeight: false)
-        if clamped.clamped {
-            Text(verbatim: "正文过大，仅显示前 \(SpecRuneDocClamp.maxCharacters) 字符（原始 \(bytes) 字节）")
-                .font(.caption)
-                .foregroundStyle(AppTheme.secondaryText(colorScheme))
-        }
+        Text(verbatim: "原文超过 1 MiB，仅读取前 1 MiB（原始 \(bytes) 字节）")
+            .font(.caption)
+            .foregroundStyle(AppTheme.secondaryText(colorScheme))
     }
 }
 
@@ -1083,9 +1127,7 @@ private struct SpecRuneDocListRow<Content: View>: View {
                 VStack(alignment: .leading, spacing: 8) {
                     content()
                     if truncated {
-                        Text(verbatim: "已截断：原始 \(bytes) 字节，仅显示前 1 MiB")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.secondaryText(colorScheme))
+                        SpecRuneTruncationNote(bytes: bytes)
                     }
                 }
                 .padding(.horizontal, 12)

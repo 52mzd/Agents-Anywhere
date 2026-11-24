@@ -34,7 +34,8 @@
 - 图标一律用 `AppSymbol`（资产映射）：本项目环境 `Image(systemName:)`
   完全不渲染（2026-10-26 两轮实测空白，全仓无先例）。
 - 用 `ChatMarkdownView` 渲染**非流式全文**（文档正文）必须传
-  `blockSpacing: 0, reservesStreamingHeight: false`，否则空白或间距随宽度变。
+  `blockSpacing: 0, reservesStreamingHeight: false`，否则空白或间距随宽度变；
+  超长正文先经 `SpecRuneDocChunks` 分段（`VStack` + 「显示更多」逐段追加），不要整篇交给渲染器，也不要一次铺开几十段（真机会卡死）。
   详见 markdown-rendering.md。
 - 经 Connector `shell.exec` 拿数据时记住 stdout 上限 **64 000 字符**：任务多时
   `task list --json --all` 会超（239 条 ≈ 222 KB），截断后 JSON 非法、整批丢弃。

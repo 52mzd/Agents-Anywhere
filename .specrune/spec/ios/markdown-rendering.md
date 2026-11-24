@@ -31,20 +31,28 @@ ChatMarkdownView(text: doc, blockSpacing: 0, reservesStreamingHeight: false)
 全文沿用它时，某个宽度下测出的偏大高度会被永久保留；**换宽度（开关侧栏、横竖屏）
 等于换一组历史值，表现为间距随宽度变化**——这是最容易误判成「CSS/排版问题」的现象。
 
-## 大文本必须 clamp（2026-11-24 实录）
+## 大文本必须分块（2026-11-24 实录）
 
 `ChatMarkdownView` 把整篇文本切块后交给 Textual；**1 MiB / 大量短段落**会让
 SwiftUI `Text.resolve` / `ConcatenatedTextStorage.resolve` 递归爆栈（SIGSEGV，
 递归深度约 16 300 层）。实测：1 MiB（约 90 000 短段落）直接崩溃；先 clamp 到
-64 000 字符仍崩溃（约 8 000 段 × 2 层 ≈ 16 000 层）；**16 000 字符**安全。
+64 000 字符仍崩溃（约 8 000 段 × 2 层 ≈ 16 000 层）；**单次渲染 16 000 字符**安全。
 
-契约：清单类展开区（SpecRune 调研/记录）在把正文交给 `ChatMarkdownView` 前，
-必须经 `SpecRuneKit` 的 `SpecRuneDocClamp.clamp`（默认 16 000 字符）截断；
-截断提示要保留原始字节数（`bytes`），不要把「仅显示前 1 MiB」当成展示上限。
+契约：SpecRune 文档正文（调研/记录展开区、PRD/设计/实施/审查的 `docBody`、
+规范展开 `specRow`）不再截断展示，而是由 `SpecRuneKit` 的
+`SpecRuneDocChunks.split` 按 Markdown 行边界切成每块 ≤ 16 000 字符的多块，交给
+`SpecRuneChunkedMarkdown`（`VStack` + 分段渲染，每段独立
+`ChatMarkdownView(blockSpacing: 0, reservesStreamingHeight: false)`）：初始只渲染
+第 1 段，点「显示更多（剩余 N 段）」每次追加 1 段，全文可查看。一次性铺开
+几十段在真机上会卡死/闪退（2026-11-24 真机实录），必须显式追加。`LazyVStack` 在本
+详情页的嵌套滚动上下文里不渲染正文（2026-11-24 实跑），不要使用。切点优先空行、
+其次标题行前、再行尾；``` / ~~~ 围栏内不切（可短暂超过 16 000，直到闭合或硬上限
+32 000）；顺序拼接必须等于原文。`SpecRuneDocClamp` 保留作兜底。
+数据层的 1 MiB 截断提示保留，但文案要说明「仅读取前 1 MiB」，不要暗示展示上限。
 通用 `ChatMarkdownView` 组件不改，避免影响聊天流式渲染。
 
-验证：模拟器实跑展开任务目录下的 1.9 MB 调研报告夹具，确认正文出现、两条提示
-（clamp 与 1 MiB）显示、app 不崩溃；崩溃日志在修复后不再新增。
+验证：模拟器实跑展开任务目录下的 1.9 MB 调研报告夹具，确认分块正文出现、可滚动
+到底、只显示 1 MiB 读取提示、app 不崩溃；崩溃日志在改动后不再新增。
 
 ## 取消不能丢结果
 
@@ -79,6 +87,6 @@ MarkdownPublishRule.accepts(
 - 渲染器逻辑：`swift test --package-path ios`（ClientCoreTests，含 `MarkdownPublishRuleTests`）
 - 渲染：模拟器实跑，**从概览切到长文档标签**（不是默认打开），确认无空白、无大间距
 - 非流式文档标签切换：按块数**减少**的方向再切一次（长文档 → 短文档），确认正文跟着换
-- 大文本：用 1 MiB / 大量短段落夹具实跑展开，确认 clamp 后正文出现、提示显示、app 不崩溃
+- 大文本：用 1 MiB / 大量短段落夹具实跑展开，确认首段正文出现、点「显示更多」能逐段看完全文、只显示 1 MiB 读取提示、app 不卡死
 - 模拟器构建必须签名（`CODE_SIGN_IDENTITY="-"`）：`CODE_SIGNING_ALLOWED=NO` 没有
   Keychain entitlement，登录会报 `-34018`，根本进不到渲染验证
