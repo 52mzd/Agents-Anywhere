@@ -9,6 +9,7 @@
 |------|-------|
 | [duo-layout.md](./duo-layout.md) | 折叠屏（iPhone Duo）机型判断与宽屏布局契约 |
 | [markdown-rendering.md](./markdown-rendering.md) | ChatMarkdownView 的三个非默认行为与结果发布规则（非流式全文必读） |
+| [specrune-board.md](./specrune-board.md) | SpecRune 看板数据层：调研/记录清单的聚合、匹配与渲染契约 |
 | [textual-vendor.md](./textual-vendor.md) | Textual 库 vendor 状态与上游对照 |
 | [upstream-sync.md](./upstream-sync.md) | 同步上游 main 的冲突处置与合并校验 |
 
