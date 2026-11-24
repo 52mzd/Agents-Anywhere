@@ -79,3 +79,6 @@ MarkdownPublishRule.accepts(
 - 渲染器逻辑：`swift test --package-path ios`（ClientCoreTests，含 `MarkdownPublishRuleTests`）
 - 渲染：模拟器实跑，**从概览切到长文档标签**（不是默认打开），确认无空白、无大间距
 - 非流式文档标签切换：按块数**减少**的方向再切一次（长文档 → 短文档），确认正文跟着换
+- 大文本：用 1 MiB / 大量短段落夹具实跑展开，确认 clamp 后正文出现、提示显示、app 不崩溃
+- 模拟器构建必须签名（`CODE_SIGN_IDENTITY="-"`）：`CODE_SIGNING_ALLOWED=NO` 没有
+  Keychain entitlement，登录会报 `-34018`，根本进不到渲染验证

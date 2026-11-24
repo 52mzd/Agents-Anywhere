@@ -35,4 +35,12 @@ struct SpecRuneDocClampTests {
         #expect(!result.clamped)
         #expect(result.text == content)
     }
+
+    @Test("阈值不得超过实测安全上限 16000")
+    func keepsSafeLimit() {
+        // 2026-11-24 实测：64000 字符（约 8000 个短段落 × 2 层嵌套）仍触发
+        // SwiftUI Text.resolve 递归爆栈；16000 安全。调大阈值必须重新实跑
+        // 1.9 MB / 大量短段落夹具，否则不要改。
+        #expect(SpecRuneDocClamp.maxCharacters <= 16_000)
+    }
 }
