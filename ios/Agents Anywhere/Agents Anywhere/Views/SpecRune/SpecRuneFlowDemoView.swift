@@ -502,18 +502,18 @@ struct FlowLinksLayer: View {
                 // 原版沿 path 跑 8 条带 drop-shadow 的光带；这里用三层描边近似辉光。
                 context.stroke(
                     band,
-                    with: .color(hop.color.opacity(0.28)),
-                    style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round)
+                    with: .color(hop.color.opacity(0.3)),
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round)
                 )
                 context.stroke(
                     band,
-                    with: .color(hop.color.opacity(0.85)),
-                    style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round)
+                    with: .color(hop.color.opacity(0.9)),
+                    style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round)
                 )
                 context.stroke(
                     band,
                     with: .color(.white.opacity(0.98)),
-                    style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
+                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
                 )
             }
         }
@@ -600,13 +600,13 @@ struct FlowNodeCard: View {
                     RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous)
                         .strokeBorder(palette.cardRing, lineWidth: 0.8)
                 )
+                .overlay { glowLayer }
                 .shadow(
                     color: palette.cardShadow.opacity(palette.cardShadowOpacity),
                     radius: palette.cardShadowRadius,
                     y: palette.cardShadowY
                 )
                 .padding(SpecRuneFlowTokens.trayPadding)
-                .overlay { glowLayer }
 
             content
                 .padding(SpecRuneFlowTokens.trayPadding)
