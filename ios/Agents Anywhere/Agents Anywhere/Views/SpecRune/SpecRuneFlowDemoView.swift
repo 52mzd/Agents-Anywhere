@@ -530,9 +530,10 @@ struct FlowLinksLayer: View {
                         hop.path
                             .trimmedPath(from: lower, to: upper)
                             .stroke(
-                                hop.color.opacity(0.95),
-                                style: StrokeStyle(lineWidth: 2.6, lineCap: .butt)
+                                hop.color.opacity(0.28),
+                                style: StrokeStyle(lineWidth: 1.5, lineCap: .butt)
                             )
+                            .shadow(color: hop.color.opacity(0.45), radius: 1.5)
                             .frame(
                                 width: layout.boardWidth,
                                 height: layout.boardHeight,
@@ -819,42 +820,37 @@ struct FlowNodeCard: View {
             let rise = glow
             // 原版 `ui-acr-got`：0–30% 保持满亮，之后线性淡出。
             let fade = rise < 0.3 ? 1 : max(0, 1 - (rise - 0.3) / 0.7)
+            // 原版波形由 `A(e, t)` 每帧用正弦重算，1100ms 走完一个周期。
+            let phase = (time / 1.1) * 2 * .pi
 
-            // 尺寸取自 affectUI 的 cqw 换算：彩色层 270×88、blur 14、从卡片底边下 45
-            // 升到上 36；白色层 228×74、blur 12、下 48 升到上 24。
             ZStack(alignment: .bottom) {
-                Ellipse()
+                // 彩色层：`--ui-acr-gf--color` 270×88、blur 14、底边下 45 升到上 36。
+                GroundWave(phase: phase, light: false)
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: node.color.opacity(0.85), location: 0),
-                                .init(color: node.color.opacity(0.38), location: 0.42),
+                                .init(color: node.color.opacity(0.8), location: 0),
+                                .init(color: node.color.opacity(0.48), location: 0.3),
+                                .init(color: node.color.opacity(0.2), location: 0.67),
                                 .init(color: node.color.opacity(0), location: 1),
                             ],
                             startPoint: .bottom,
                             endPoint: .top
                         )
                     )
-                    .frame(width: 240, height: 76)
+                    .frame(width: 270, height: 88)
                     .scaleEffect(x: 1 + rise * 0.08, y: 1 + rise, anchor: .bottom)
                     .offset(y: 45 - rise * 81)
                     .blur(radius: 14)
 
-                Ellipse()
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .white.opacity(palette.card == .clear ? 0.16 : 0.75), location: 0),
-                                .init(color: .white.opacity(0), location: 1),
-                            ],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .frame(width: 200, height: 62)
+                // 白色层：`--ui-acr-gf--light` 228×74、blur 12、`mix-blend-mode: plus-lighter`。
+                GroundWave(phase: phase, light: true)
+                    .fill(Color.white.opacity(palette.card == .clear ? 0.18 : 0.72))
+                    .frame(width: 228, height: 74)
                     .scaleEffect(x: 1 + rise * 0.04, y: 1 + rise * 0.8, anchor: .bottom)
                     .offset(y: 48 - rise * 72)
                     .blur(radius: 12)
+                    .blendMode(.plusLighter)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .opacity(fade)
@@ -864,6 +860,71 @@ struct FlowNodeCard: View {
             )
             .allowsHitTesting(false)
         }
+    }
+}
+
+/// 原版 affectUI 的落地闪光波形 `A(e, t)`：五个正弦偏移驱动一条闭合波带。
+struct GroundWave: Shape {
+    let phase: Double
+    let light: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let k: CGFloat = light ? 0.8427 : 1
+        let viewBox = light
+            ? CGSize(width: 2904.96, height: 1275.97)
+            : CGSize(width: 3447.1, height: 1514.1)
+
+        let v1 = light ? CGPoint(x: 781.039, y: 476.815) : CGPoint(x: 926.8, y: 565.8)
+        let ctrl = light ? CGPoint(x: 254.588, y: 250.543) : CGPoint(x: 302.1, y: 297.3)
+        let left = light ? CGPoint(x: 245.486, y: 245.486) : CGPoint(x: 291.3, y: 291.3)
+        let bottom: CGFloat = light ? 1030.49 : 1222.8
+        let right = light ? CGPoint(x: 2659.48, y: 304.477) : CGPoint(x: 3155.8, y: 361.3)
+        let v4 = light ? CGPoint(x: 2101.59, y: 476.815) : CGPoint(x: 2493.8, y: 565.8)
+        let v3 = light ? CGPoint(x: 1844.98, y: 476.815) : CGPoint(x: 2189.3, y: 565.8)
+        let m2 = light ? CGPoint(x: 1600.17, y: 361.361) : CGPoint(x: 1898.8, y: 428.8)
+        let m1 = light ? CGPoint(x: 1273.19, y: 361.361) : CGPoint(x: 1510.8, y: 428.8)
+        let v2 = light ? CGPoint(x: 1037.23, y: 476.815) : CGPoint(x: 1230.8, y: 565.8)
+
+        let l = 110 * sin(phase)
+        let m = -110 * sin(phase + 0.5)
+        let rr = 110 * sin(phase + 1)
+        let vL = 80 * sin(phase + .pi / 2 + 0.25)
+        let vR = 80 * sin(phase - .pi / 2 + 0.75)
+
+        func map(_ point: CGPoint) -> CGPoint {
+            CGPoint(
+                x: rect.minX + point.x / viewBox.width * rect.width,
+                y: rect.minY + point.y / viewBox.height * rect.height
+            )
+        }
+        func shifted(_ point: CGPoint, _ offset: Double) -> CGPoint {
+            CGPoint(x: point.x, y: point.y + CGFloat(offset) * k)
+        }
+        func horizontal(_ x: CGFloat, _ point: CGPoint) -> CGPoint {
+            CGPoint(x: x, y: shifted(point, 0).y)
+        }
+
+        var path = Path()
+        path.move(to: map(shifted(v1, vL)))
+        path.addCurve(
+            to: map(shifted(left, l)),
+            control1: map(shifted(v1, vL)),
+            control2: map(shifted(ctrl, l))
+        )
+        path.addLine(to: map(CGPoint(x: left.x, y: bottom)))
+        path.addLine(to: map(CGPoint(x: right.x, y: bottom)))
+        path.addLine(to: map(shifted(right, rr)))
+        path.addLine(to: map(shifted(v4, vR)))
+        path.addLine(to: map(horizontal(v3.x, v4)))
+        path.addLine(to: map(shifted(v3, vR)))
+        path.addLine(to: map(shifted(m2, m)))
+        path.addLine(to: map(horizontal(m1.x, m2)))
+        path.addLine(to: map(shifted(m1, m)))
+        path.addLine(to: map(shifted(v2, vL)))
+        path.addLine(to: map(horizontal(v1.x, v2)))
+        path.addLine(to: map(shifted(v1, vL)))
+        path.closeSubpath()
+        return path
     }
 }
 
