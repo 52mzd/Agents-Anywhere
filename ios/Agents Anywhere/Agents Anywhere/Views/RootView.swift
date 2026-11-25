@@ -38,6 +38,13 @@ struct RootView: View {
             .padding(.trailing, 16)
             .padding(.bottom, 156)
         }
+        // 带 --flow-demo 启动参数时直接进入 Demo，方便截图与录屏验证；
+        // 正常启动仍然只显示右下角的入口按钮。
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--flow-demo") {
+                showingFlowDemo = true
+            }
+        }
         .sheet(isPresented: $showingFlowDemo) {
             SpecRuneFlowDemoView()
         }

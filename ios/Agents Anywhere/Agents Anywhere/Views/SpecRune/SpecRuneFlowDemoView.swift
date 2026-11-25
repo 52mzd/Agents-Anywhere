@@ -1,79 +1,222 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 演示数据
+// MARK: - 数据
 
-enum FlowDemoStepStatus {
+enum FlowNodeStatus {
     case done, active, idle, unknown
+
+    var label: String {
+        switch self {
+        case .done: "已完成"
+        case .active: "进行中"
+        case .idle: "待命"
+        case .unknown: "无信号"
+        }
+    }
 }
 
-struct FlowDemoStep: Identifiable {
+struct FlowNodeModel: Identifiable {
     let id: String
     let title: String
-    let status: FlowDemoStepStatus
+    let model: String?
+    let status: FlowNodeStatus
     let activity: String
     let progress: Double
-    let hasFoot: Bool
-}
-
-struct FlowDemoStage: Identifiable {
-    let id: String
-    let title: String
-    let caption: String
-    let detail: String
-    let progress: Double
-    let steps: [FlowDemoStep]
+    let progressLabel: String
+    let footText: String?
     let color: Color
+    var children: [FlowNodeModel]
+
+    static func makeTree(rootColor: Color) -> FlowNodeModel {
+        let colors = SpecRuneFlowTokens.nodeColors
+        let plan = [
+            node("1.1", "需求探索", "explore", .done, "已确认 6 项事实", 1, .one, "SpecRune prd.md · design.md", colors[0]),
+            node("1.2", "调研", "research", .unknown, "无信号", 0, .zero, nil, colors[0]),
+            node("1.3", "配置上下文", "context", .done, "7 + 5 条已策展", 1, .one, "SpecRune 清单 12 条", colors[0]),
+            node("1.4", "激活任务", "start", .done, "已绑定本会话", 1, .one, nil, colors[0]),
+        ]
+        let execute = [
+            node("2.1", "实现", "implement", .active, "正在复刻卡片与连线", 0.64, .percent(0.64), "SpecRune 4/6 文件已改", colors[1]),
+            node("2.2", "新鲜复查", "review", .idle, "等待实现完成", 0, .zero, nil, colors[1]),
+            node("2.3", "修复", "fix", .idle, "通常不需要", 0, .zero, nil, colors[1]),
+        ]
+        let finish = [
+            node("3.2", "更新规范", "spec", .idle, "无新增契约", 0, .zero, nil, colors[2]),
+            node("3.3", "提交", "commit", .idle, "代码与规范同提", 0, .zero, nil, colors[2]),
+            node("3.4", "归档", "archive", .unknown, "验收通过后", 0, .zero, nil, colors[2]),
+        ]
+        return FlowNodeModel(
+            id: "root",
+            title: "SpecRune 工作流图",
+            model: "@dae · 阶段 2 / 3",
+            status: .active,
+            activity: "正在复刻卡片、连线与动效",
+            progress: 0.62,
+            progressLabel: "124k / 200k",
+            footText: "最近一次注入",
+            color: rootColor,
+            children: [
+                FlowNodeModel(
+                    id: "stage-1", title: "Plan 阶段", model: "1.0 → 1.4",
+                    status: .done, activity: "prd.md · design.md · 清单 7/5",
+                    progress: 1, progressLabel: "200k / 200k",
+                    footText: "最近一次注入", color: colors[0], children: plan
+                ),
+                FlowNodeModel(
+                    id: "stage-2", title: "Execute 阶段", model: "2.1 → 2.3",
+                    status: .active, activity: "2.1 实现中 · 4/6 文件已改",
+                    progress: 0.58, progressLabel: "116k / 200k",
+                    footText: "最近一次注入", color: colors[1], children: execute
+                ),
+                FlowNodeModel(
+                    id: "stage-3", title: "Finish 阶段", model: "3.2 → 3.4",
+                    status: .idle, activity: "等 Execute 收尾",
+                    progress: 0, progressLabel: "0 / 200k",
+                    footText: "最近一次注入", color: colors[2], children: finish
+                ),
+            ]
+        )
+    }
+
+    private static func node(
+        _ id: String, _ title: String, _ model: String, _ status: FlowNodeStatus,
+        _ activity: String, _ ratio: Double, _ label: ProgressLabel, _ foot: String?, _ color: Color
+    ) -> FlowNodeModel {
+        FlowNodeModel(
+            id: id, title: title, model: model, status: status, activity: activity,
+            progress: ratio, progressLabel: label.text, footText: foot, color: color, children: []
+        )
+    }
+
+    enum ProgressLabel {
+        case zero, one, percent(Double)
+        var text: String {
+            switch self {
+            case .zero: "0%"
+            case .one: "100%"
+            case let .percent(v): "\(Int((v * 100).rounded()))%"
+            }
+        }
+    }
 }
 
-enum FlowDemoData {
-    static let stages: [FlowDemoStage] = [
-        FlowDemoStage(
-            id: "1",
-            title: "Plan 阶段",
-            caption: "1.0 → 1.4",
-            detail: "prd.md · design.md · 清单 7/5",
-            progress: 1,
-            steps: [
-                FlowDemoStep(id: "1.1", title: "需求探索", status: .done, activity: "已确认 6 项事实", progress: 1, hasFoot: true),
-                FlowDemoStep(id: "1.2", title: "调研", status: .unknown, activity: "无信号", progress: 0, hasFoot: false),
-                FlowDemoStep(id: "1.3", title: "配置上下文", status: .done, activity: "7 + 5 条已策展", progress: 1, hasFoot: true),
-                FlowDemoStep(id: "1.4", title: "激活任务", status: .done, activity: "已绑定本会话", progress: 1, hasFoot: false),
-            ],
-            color: SpecRuneFlowTokens.stageColors[0]
-        ),
-        FlowDemoStage(
-            id: "2",
-            title: "Execute 阶段",
-            caption: "2.1 → 2.3",
-            detail: "2.1 实现中 · 4/6 文件已改",
-            progress: 0.58,
-            steps: [
-                FlowDemoStep(id: "2.1", title: "实现", status: .active, activity: "正在复刻卡片与连线", progress: 0.64, hasFoot: true),
-                FlowDemoStep(id: "2.2", title: "新鲜复查", status: .idle, activity: "等待实现完成", progress: 0, hasFoot: false),
-                FlowDemoStep(id: "2.3", title: "修复", status: .idle, activity: "通常不需要", progress: 0, hasFoot: false),
-            ],
-            color: SpecRuneFlowTokens.stageColors[1]
-        ),
-        FlowDemoStage(
-            id: "3",
-            title: "Finish 阶段",
-            caption: "3.2 → 3.4",
-            detail: "等 Execute 收尾",
-            progress: 0,
-            steps: [
-                FlowDemoStep(id: "3.2", title: "更新规范", status: .idle, activity: "无新增契约", progress: 0, hasFoot: false),
-                FlowDemoStep(id: "3.3", title: "提交", status: .idle, activity: "代码与规范同提", progress: 0, hasFoot: false),
-                FlowDemoStep(id: "3.4", title: "归档", status: .unknown, activity: "验收通过后", progress: 0, hasFoot: false),
-            ],
-            color: SpecRuneFlowTokens.stageColors[2]
-        ),
-    ]
+// MARK: - 布局
+
+struct FlowLayout {
+    let nodeWidth: CGFloat = SpecRuneFlowTokens.cardWidth
+    let nodeHeight: CGFloat = 128
+    let indent: CGFloat = SpecRuneFlowTokens.indent
+    let columnGap: CGFloat = SpecRuneFlowTokens.levelGap
+    let levelTop: CGFloat = SpecRuneFlowTokens.levelTopMargin
+    let nodeGap: CGFloat = SpecRuneFlowTokens.nodeGap
+    let padding: CGFloat = 28
+
+    let stageCount: Int
+    let childCounts: [Int]
+
+    var columnWidth: CGFloat { nodeWidth + indent }
+
+    var boardWidth: CGFloat {
+        padding * 2 + CGFloat(stageCount) * columnWidth
+            + CGFloat(max(stageCount - 1, 0)) * columnGap
+    }
+
+    var rootRect: CGRect {
+        CGRect(x: (boardWidth - nodeWidth) / 2, y: 0, width: nodeWidth, height: nodeHeight)
+    }
+
+    var levelY: CGFloat { nodeHeight + levelTop }
+
+    func stageX(_ index: Int) -> CGFloat {
+        padding + CGFloat(index) * (columnWidth + columnGap)
+    }
+
+    func stageRect(_ index: Int) -> CGRect {
+        CGRect(x: stageX(index), y: levelY, width: nodeWidth, height: nodeHeight)
+    }
+
+    func childY(_ stage: Int, _ index: Int) -> CGFloat {
+        levelY + nodeHeight + nodeGap + CGFloat(index) * (nodeHeight + nodeGap)
+    }
+
+    func childRect(_ stage: Int, _ index: Int) -> CGRect {
+        CGRect(
+            x: stageX(stage) + indent,
+            y: childY(stage, index),
+            width: nodeWidth,
+            height: nodeHeight
+        )
+    }
+
+    var boardHeight: CGFloat {
+        var tallest = levelY + nodeHeight
+        for stage in 0 ..< stageCount {
+            let count = childCounts[stage]
+            guard count > 0 else { continue }
+            tallest = max(tallest, childY(stage, count - 1) + nodeHeight)
+        }
+        return tallest + padding
+    }
+
+    func allNodeRects() -> [ (id: String, rect: CGRect, color: Color) ] { [] }
+}
+
+// MARK: - 动画时间轴
+
+/// 把「连线跑光带 → 节点落地闪光」算成 time 的纯函数，方便每帧重算。
+struct FlowTimeline {
+    struct Hop {
+        let id: String
+        let path: Path
+        let targetID: String
+        let color: Color
+    }
+
+    let hops: [Hop]
+    let nodeRects: [String: CGRect]
+
+    static let hopDuration: Double = 0.55
+    static let hopGap: Double = 0.14
+    static let startDelay: Double = 1.1
+    static let tailPause: Double = 2.2
+    static let glowDuration: Double = SpecRuneFlowTokens.glow
+
+    var cycle: Double {
+        guard !hops.isEmpty else { return 4 }
+        return Self.startDelay + Double(hops.count) * (Self.hopDuration + Self.hopGap) + Self.tailPause
+    }
+
+    /// 当前跑到第几个 hop、进度多少。
+    func currentHop(at time: Double) -> (index: Int, progress: Double)? {
+        guard !hops.isEmpty else { return nil }
+        let local = time.truncatingRemainder(dividingBy: cycle)
+        let slot = Self.hopDuration + Self.hopGap
+        let offset = local - Self.startDelay
+        guard offset >= 0 else { return nil }
+        let index = Int(offset / slot)
+        guard index < hops.count else { return nil }
+        let progress = (offset - Double(index) * slot) / Self.hopDuration
+        guard progress <= 1 else { return nil }
+        return (index, max(0, min(1, progress)))
+    }
+
+    /// 节点落地闪光的进度（0 表示不在闪）。
+    func glow(for nodeID: String, at time: Double) -> Double {
+        guard !hops.isEmpty else { return 0 }
+        let local = time.truncatingRemainder(dividingBy: cycle)
+        for (index, hop) in hops.enumerated() where hop.targetID == nodeID {
+            let arrive = Self.startDelay + Double(index) * (Self.hopDuration + Self.hopGap) + Self.hopDuration
+            let delta = local - arrive
+            guard delta >= 0, delta < Self.glowDuration else { continue }
+            return delta / Self.glowDuration
+        }
+        return 0
+    }
 }
 
 // MARK: - 画布
 
-/// 把固定尺寸的流程图画布塞进 `UIScrollView`：原生惯性、双指缩放、双击缩放。
 struct FlowDemoCanvas<Content: View>: UIViewRepresentable {
     let contentSize: CGSize
     var resetToken: Int = 0
@@ -138,11 +281,8 @@ struct FlowDemoCanvas<Content: View>: UIViewRepresentable {
         var contentSize: CGSize = .zero
         var lastResetToken = 0
         private var fitScale: CGFloat = 1
-        /// 用户手动缩放过之后就不再自动 fit，避免抢走他的缩放。
         private var userZoomed = false
 
-        /// 每次 bounds 变化且用户还没缩放过，就重新适配——sheet 呈现动画期间
-        /// bounds 会从 0 长到最终尺寸，只在第一次 layout 里 fit 会算错。
         func fitIfNeeded(_ scroll: UIScrollView) {
             guard !userZoomed, scroll.bounds.width > 1, contentSize.width > 1 else { return }
             let scale = min(
@@ -151,7 +291,6 @@ struct FlowDemoCanvas<Content: View>: UIViewRepresentable {
             )
             guard scale > 0 else { return }
             fitScale = scale
-            // 不要在 layoutSubviews 里同步改 zoom，否则会触发下一轮布局。
             DispatchQueue.main.async { [weak self, weak scroll] in
                 guard let self, let scroll else { return }
                 self.applyScale(scale, to: scroll)
@@ -170,7 +309,6 @@ struct FlowDemoCanvas<Content: View>: UIViewRepresentable {
             centerContent(in: scroll)
         }
 
-        /// 内容小于视口时居中显示。
         private func centerContent(in scroll: UIScrollView) {
             let scaled = CGSize(
                 width: contentSize.width * scroll.zoomScale,
@@ -202,7 +340,6 @@ struct FlowDemoCanvas<Content: View>: UIViewRepresentable {
     }
 }
 
-/// 每次布局都把 bounds 交给上层——sheet 呈现过程中 bounds 会变好几次。
 final class FitScrollView: UIScrollView {
     var onLayout: ((FitScrollView) -> Void)?
 
@@ -212,597 +349,721 @@ final class FitScrollView: UIScrollView {
     }
 }
 
-// MARK: - 画布尺寸
-
-enum FlowBoardMetrics {
-    static let padding: CGFloat = 24
-    static let rootWidth: CGFloat = 222
-    static let rootHeight: CGFloat = 108
-    static let rootGap: CGFloat = 64
-    static let footHeight: CGFloat = 22
-
-    static let columns: CGFloat = 3
-    static var boardWidth: CGFloat {
-        padding * 2 + columns * SpecRuneFlowTokens.cardWidth
-            + (columns - 1) * SpecRuneFlowTokens.stageGap
-    }
-
-    static var stageTop: CGFloat { rootHeight + rootGap }
-
-    static func stepHeights(_ stage: FlowDemoStage) -> [CGFloat] {
-        stage.steps.map {
-            SpecRuneFlowTokens.stepCardHeight + ($0.hasFoot ? footHeight : 0)
-        }
-    }
-
-    static func columnHeight(_ stage: FlowDemoStage) -> CGFloat {
-        stageTop + SpecRuneFlowTokens.stageHeaderHeight
-            + SpecRuneFlowTokens.stepGap
-            + stepHeights(stage).reduce(0, +)
-            + CGFloat(max(stage.steps.count - 1, 0)) * SpecRuneFlowTokens.stepGap
-            + padding
-    }
-
-    static var boardHeight: CGFloat {
-        FlowDemoData.stages.map(columnHeight).max() ?? 600
-    }
-
-    static func stageX(_ index: Int) -> CGFloat {
-        padding + CGFloat(index) * (SpecRuneFlowTokens.cardWidth + SpecRuneFlowTokens.stageGap)
-    }
-
-    static func stepY(_ stage: FlowDemoStage, _ index: Int) -> CGFloat {
-        var y = stageTop + SpecRuneFlowTokens.stageHeaderHeight + SpecRuneFlowTokens.stepGap
-        let heights = stepHeights(stage)
-        for i in 0 ..< min(index, heights.count) {
-            y += heights[i] + SpecRuneFlowTokens.stepGap
-        }
-        return y
-    }
-
-    static var rootX: CGFloat { (boardWidth - rootWidth) / 2 }
-}
-
 // MARK: - 画布内容
 
 struct FlowDemoBoard: View {
     let palette: SpecRuneFlowTokens.Palette
-    let appeared: Bool
     let reduceMotion: Bool
+    let onSelect: (FlowNodeModel) -> Void
+
+    @State private var tree: FlowNodeModel = FlowNodeModel.makeTree(rootColor: .blue)
+
+    private var layout: FlowLayout {
+        FlowLayout(stageCount: 3, childCounts: [4, 3, 3])
+    }
+
+    private var timeline: FlowTimeline {
+        let layout = layout
+        var hops: [FlowTimeline.Hop] = []
+        var rects: [String: CGRect] = ["root": layout.rootRect]
+        rects["root"] = layout.rootRect
+
+        for (stageIndex, stage) in tree.children.enumerated() {
+            let stageRect = layout.stageRect(stageIndex)
+            rects[stage.id] = stageRect
+
+            for (childIndex, child) in stage.children.enumerated() {
+                let childRect = layout.childRect(stageIndex, childIndex)
+                rects[child.id] = childRect
+                let path = Self.linkPath(from: stageRect, to: childRect)
+                hops.append(.init(id: "\(stage.id)>\(child.id)", path: path, targetID: child.id, color: stage.color))
+            }
+        }
+        return FlowTimeline(hops: hops, nodeRects: rects)
+    }
 
     var body: some View {
+        let layout = layout
+        let timeline = timeline
+
         ZStack(alignment: .topLeading) {
-            FlowDemoLinksLayer(palette: palette, appeared: appeared, reduceMotion: reduceMotion)
+            TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { context in
+                let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+                ZStack(alignment: .topLeading) {
+                    FlowLinksLayer(
+                        layout: layout,
+                        tree: tree,
+                        timeline: timeline,
+                        palette: palette,
+                        time: time
+                    )
 
-            FlowDemoRootCard(palette: palette)
-                .frame(width: FlowBoardMetrics.rootWidth, height: FlowBoardMetrics.rootHeight)
-                .offset(x: FlowBoardMetrics.rootX, y: 0)
+                    nodeView(tree, rect: layout.rootRect, timeline: timeline, time: time)
 
-            ForEach(Array(FlowDemoData.stages.enumerated()), id: \.element.id) { item in
-                FlowDemoStageColumn(
-                    stage: item.element,
-                    palette: palette,
-                    reduceMotion: reduceMotion
-                )
-                .offset(
-                    x: FlowBoardMetrics.stageX(item.offset),
-                    y: FlowBoardMetrics.stageTop
-                )
+                    ForEach(Array(tree.children.enumerated()), id: \.element.id) { item in
+                        let stageIndex = item.offset
+                        let stage = item.element
+                        nodeView(stage, rect: layout.stageRect(stageIndex), timeline: timeline, time: time)
+
+                        ForEach(Array(stage.children.enumerated()), id: \.element.id) { childItem in
+                            nodeView(
+                                childItem.element,
+                                rect: layout.childRect(stageIndex, childItem.offset),
+                                timeline: timeline,
+                                time: time
+                            )
+                        }
+                    }
+                }
+                .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+                .animation(nil, value: time)
             }
         }
-        .frame(
-            width: FlowBoardMetrics.boardWidth,
-            height: FlowBoardMetrics.boardHeight,
-            alignment: .topLeading
+        .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+    }
+
+    private func nodeView(
+        _ node: FlowNodeModel,
+        rect: CGRect,
+        timeline: FlowTimeline,
+        time: Double
+    ) -> some View {
+        FlowNodeCard(
+            node: node,
+            palette: palette,
+            time: time,
+            reduceMotion: reduceMotion,
+            glow: timeline.glow(for: node.id, at: time),
+            onTap: { onSelect(node) }
         )
-    }
-}
-
-// MARK: - 连线
-
-struct FlowDemoLinksLayer: View {
-    let palette: SpecRuneFlowTokens.Palette
-    let appeared: Bool
-    let reduceMotion: Bool
-
-    var body: some View {
-        Canvas { context, _ in
-            for link in links {
-                let trimmed = link.path.trimmedPath(from: 0, to: appeared ? 1 : 0)
-                context.stroke(
-                    trimmed,
-                    with: .color(link.color.opacity(linkColorOpacity)),
-                    style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
-                )
-            }
-        }
-        .frame(width: FlowBoardMetrics.boardWidth, height: FlowBoardMetrics.boardHeight)
-        .animation(
-            reduceMotion ? nil : SpecRuneFlowTokens.linkDraw.delay(SpecRuneFlowTokens.linkDrawDelay),
-            value: appeared
-        )
+        .frame(width: rect.width, height: rect.height)
+        .offset(x: rect.minX, y: rect.minY)
     }
 
-    private var linkColorOpacity: Double {
-        palette.card == .clear ? 0.9 : 0.6
-    }
+    /// 父卡左下 17pt 处下竖线，圆角拐进子卡左侧 25pt 处。
+    static func linkPath(from parent: CGRect, to child: CGRect) -> Path {
+        let start = CGPoint(x: parent.minX + 17, y: parent.maxY)
+        let endX = child.minX
+        let endY = child.minY + 25
 
-    private var links: [(path: Path, color: Color)] {
-        var result: [(path: Path, color: Color)] = []
-        let rootCenter = FlowBoardMetrics.rootX + FlowBoardMetrics.rootWidth / 2
-        let rootBottom = FlowBoardMetrics.rootHeight
-
-        for (index, stage) in FlowDemoData.stages.enumerated() {
-            let columnX = FlowBoardMetrics.stageX(index)
-            let stageCenter = columnX + SpecRuneFlowTokens.cardWidth / 2
-
-            // 根卡 → 阶段卡：共享一条水平母线，再垂直落到每列顶部。
-            result.append((
-                elbow(
-                    from: CGPoint(x: rootCenter, y: rootBottom),
-                    to: CGPoint(x: stageCenter, y: FlowBoardMetrics.stageTop),
-                    midY: rootBottom + (FlowBoardMetrics.stageTop - rootBottom) / 2,
-                    radius: 8
-                ),
-                stage.color
-            ))
-
-            // 阶段卡 → 步骤卡：主干绕到卡片左侧外走，分支水平指向卡片左边缘
-            // （分支末段被卡片遮住，和桌面视觉一致，不会让竖线穿过卡片内容）。
-            let stageBottom = FlowBoardMetrics.stageTop + SpecRuneFlowTokens.stageHeaderHeight
-            let heights = FlowBoardMetrics.stepHeights(stage)
-            guard !heights.isEmpty else { continue }
-
-            let trunkX = columnX - 14
-            let trunkTop = stageBottom + SpecRuneFlowTokens.stepGap / 2
-            let bottoMostY = FlowBoardMetrics.stepY(stage, heights.count - 1) + heights[heights.count - 1] / 2
-
-            var trunk = Path()
-            trunk.move(to: CGPoint(x: stageCenter, y: stageBottom))
-            trunk.addLine(to: CGPoint(x: stageCenter, y: trunkTop - 8))
-            trunk.addQuadCurve(
-                to: CGPoint(x: trunkX, y: trunkTop),
-                control: CGPoint(x: stageCenter, y: trunkTop)
-            )
-            trunk.addLine(to: CGPoint(x: trunkX, y: bottoMostY))
-            result.append((trunk, stage.color))
-
-            for stepIndex in heights.indices {
-                let y = FlowBoardMetrics.stepY(stage, stepIndex) + heights[stepIndex] / 2
-                var branch = Path()
-                branch.move(to: CGPoint(x: trunkX, y: y))
-                branch.addLine(to: CGPoint(x: columnX, y: y))
-                result.append((branch, stage.color))
-            }
-        }
-        return result
-    }
-
-    /// 一竖一横的圆角折线：先沿起点 x 竖下，再拐向目标 x。
-    private func elbow(from: CGPoint, to: CGPoint, midY: CGFloat, radius: CGFloat) -> Path {
         var path = Path()
-        path.move(to: from)
-        guard abs(to.x - from.x) > 0.5, midY > from.y else {
-            path.addLine(to: to)
+        path.move(to: start)
+        let deltaX = endX - start.x
+        guard deltaX > 0.5 else {
+            path.addLine(to: CGPoint(x: start.x, y: endY))
             return path
         }
-        let direction: CGFloat = to.x > from.x ? 1 : -1
-        let r = min(radius, abs(midY - from.y) / 2, abs(to.x - from.x) / 2)
-        path.addLine(to: CGPoint(x: from.x, y: midY - r))
+        let corner = min(8, deltaX / 2, max(0, (endY - start.y) / 2))
+        path.addLine(to: CGPoint(x: start.x, y: endY - corner))
         path.addQuadCurve(
-            to: CGPoint(x: from.x + direction * r, y: midY),
-            control: CGPoint(x: from.x, y: midY)
+            to: CGPoint(x: start.x + corner, y: endY),
+            control: CGPoint(x: start.x, y: endY)
         )
-        path.addLine(to: CGPoint(x: to.x, y: midY))
+        path.addLine(to: CGPoint(x: endX, y: endY))
         return path
     }
 }
 
-// MARK: - 阶段列
+// MARK: - 连线 / 光带 / 落地闪光
 
-struct FlowDemoStageColumn: View {
-    let stage: FlowDemoStage
+struct FlowLinksLayer: View {
+    let layout: FlowLayout
+    let tree: FlowNodeModel
+    let timeline: FlowTimeline
     let palette: SpecRuneFlowTokens.Palette
-    let reduceMotion: Bool
+    let time: Double
 
     var body: some View {
-        VStack(alignment: .leading, spacing: SpecRuneFlowTokens.stepGap) {
-            FlowDemoStageCard(stage: stage, palette: palette)
+        Canvas { context, size in
+            // 1. 根卡 → 阶段卡的母线
+            drawRootLinks(context: &context, size: size)
 
-            ForEach(Array(stage.steps.enumerated()), id: \.element.id) { item in
-                FlowDemoNodeCard(
-                    step: item.element,
-                    stageColor: stage.color,
-                    palette: palette,
-                    reduceMotion: reduceMotion
+            // 2. 阶段卡 → 步骤卡
+            for hop in timeline.hops {
+                context.stroke(
+                    hop.path,
+                    with: .color(mixed(hop.color)),
+                    style: StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round)
+                )
+                // 连接点小圆
+                if let target = timeline.nodeRects[hop.targetID] {
+                    let dot = CGRect(x: target.minX - 2.5, y: target.minY + 25 - 2.5, width: 5, height: 5)
+                    context.fill(Path(ellipseIn: dot), with: .color(mixed(hop.color)))
+                }
+            }
+
+            // 3. 光带：沿当前 hop 的路径跑
+            if let current = timeline.currentHop(at: time) {
+                let hop = timeline.hops[current.index]
+                let head = current.progress
+                let tail = max(0, head - 0.22)
+                let band = hop.path.trimmedPath(from: tail, to: head)
+                // 原版沿 path 跑 8 条带 drop-shadow 的光带；这里用三层描边近似辉光。
+                context.stroke(
+                    band,
+                    with: .color(hop.color.opacity(0.28)),
+                    style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round)
+                )
+                context.stroke(
+                    band,
+                    with: .color(hop.color.opacity(0.85)),
+                    style: StrokeStyle(lineWidth: 4.5, lineCap: .round, lineJoin: .round)
+                )
+                context.stroke(
+                    band,
+                    with: .color(.white.opacity(0.98)),
+                    style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
                 )
             }
         }
-        .frame(width: SpecRuneFlowTokens.cardWidth, alignment: .leading)
+        .frame(width: layout.boardWidth, height: layout.boardHeight)
     }
-}
 
-// MARK: - 卡片
+    private func mixed(_ color: Color) -> Color {
+        // 原版 stroke 是 color-mix(节点色 50%, 卡片色)：这里用节点色降透明度近似。
+        color.opacity(0.55)
+    }
 
-struct FlowDemoStageCard: View {
-    let stage: FlowDemoStage
-    let palette: SpecRuneFlowTokens.Palette
+    private func drawRootLinks(context: inout GraphicsContext, size: CGSize) {
+        let root = layout.rootRect
+        let start = CGPoint(x: root.midX, y: root.maxY)
+        let busY = root.maxY + (layout.levelY - root.maxY) / 2
 
-    var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack(spacing: 9) {
-                    FlowDemoMark(color: stage.color, size: 26)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(stage.title)
-                            .font(.system(size: 13.5, weight: .semibold))
-                            .foregroundStyle(palette.ink)
-                            .lineLimit(1)
-                        Text(stage.caption)
-                            .font(.system(size: 11, weight: .medium).monospacedDigit())
-                            .foregroundStyle(palette.muted)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 0)
-                    FlowDemoStatusBadge(text: stageBadge, color: stageBadgeColor)
-                }
+        var bus = Path()
+        bus.move(to: start)
+        bus.addLine(to: CGPoint(x: start.x, y: busY))
+        context.stroke(bus, with: .color(tree.color.opacity(0.55)), style: StrokeStyle(lineWidth: 1.75, lineCap: .round))
 
-                Text(stage.detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(palette.text)
-                    .lineLimit(1)
+        let left = layout.stageRect(0).midX
+        let right = layout.stageRect(layout.stageCount - 1).midX
+        var horizontal = Path()
+        horizontal.move(to: CGPoint(x: left, y: busY))
+        horizontal.addLine(to: CGPoint(x: right, y: busY))
+        context.stroke(horizontal, with: .color(tree.color.opacity(0.4)), style: StrokeStyle(lineWidth: 1.75, lineCap: .round))
 
-                Spacer(minLength: 0)
+        for index in 0 ..< layout.stageCount {
+            let midX = layout.stageRect(index).midX
+            var branch = Path()
+            branch.move(to: CGPoint(x: midX, y: busY))
+            branch.addLine(to: CGPoint(x: midX, y: layout.levelY))
+            let color = tree.children[index].color
+            context.stroke(branch, with: .color(color.opacity(0.55)), style: StrokeStyle(lineWidth: 1.75, lineCap: .round))
 
-                FlowDemoMeter(progress: stage.progress, color: stage.color, palette: palette)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .frame(height: SpecRuneFlowTokens.stageHeaderHeight - FlowBoardMetrics.footHeight, alignment: .topLeading)
-
-            FlowDemoFootBar(text: "最近一次注入", palette: palette)
+            var dot = Path()
+            dot.addEllipse(in: CGRect(x: midX - 2.5, y: busY - 2.5, width: 5, height: 5))
+            context.fill(dot, with: .color(color.opacity(0.55)))
         }
-        .frame(width: SpecRuneFlowTokens.cardWidth, height: SpecRuneFlowTokens.stageHeaderHeight)
-        .background(cardSurface)
-    }
-
-    private var stageBadge: String {
-        if stage.progress >= 1 { return "已完成" }
-        if stage.progress > 0 { return "进行中" }
-        return "待命"
-    }
-
-    private var stageBadgeColor: Color {
-        if stage.progress >= 1 { return palette.okForeground }
-        if stage.progress > 0 { return stage.color }
-        return palette.muted
-    }
-
-    private var cardSurface: some View {
-        RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-            .fill(palette.card)
-            .overlay(
-                RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-                    .strokeBorder(palette.cardRing, lineWidth: 1)
-            )
-            .shadow(
-                color: palette.cardShadow.opacity(palette.cardShadowOpacity),
-                radius: palette.cardShadowRadius,
-                y: palette.cardShadowY
-            )
     }
 }
 
-struct FlowDemoNodeCard: View {
-    let step: FlowDemoStep
-    let stageColor: Color
+// MARK: - 节点卡
+
+struct FlowNodeCard: View {
+    let node: FlowNodeModel
     let palette: SpecRuneFlowTokens.Palette
+    let time: Double
     let reduceMotion: Bool
+    let glow: Double
+    let onTap: () -> Void
 
-    @State private var progress: Double = 0
+    @State private var visible = false
 
-    private var totalHeight: CGFloat {
-        SpecRuneFlowTokens.stepCardHeight + (step.hasFoot ? FlowBoardMetrics.footHeight : 0)
-    }
+    private var isActive: Bool { node.status == .active }
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    FlowDemoMark(color: stageColor, size: 24)
-                    Text(step.title)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(palette.ink)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    FlowDemoStepIcon(
-                        status: step.status,
-                        color: stageColor,
-                        palette: palette,
-                        reduceMotion: reduceMotion
-                    )
-                }
+        ZStack(alignment: .bottom) {
+            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.trayRadius, style: .continuous)
+                .fill(palette.tray)
 
-                Text(step.activity)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(palette.muted)
-                    .lineLimit(1)
-
-                Spacer(minLength: 0)
-
-                FlowDemoMeter(progress: progress, color: stageColor, palette: palette)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
-            .frame(
-                height: SpecRuneFlowTokens.stepCardHeight - (step.hasFoot ? FlowBoardMetrics.footHeight : 0),
-                alignment: .topLeading
-            )
-
-            if step.hasFoot {
-                FlowDemoFootBar(text: "SpecRune 最近一次注入", palette: palette)
-            }
-        }
-        .frame(width: SpecRuneFlowTokens.cardWidth, height: totalHeight)
-        .background(
-            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous)
                 .fill(palette.card)
                 .overlay(
-                    RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-                        .strokeBorder(palette.cardRing, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous)
+                        .strokeBorder(palette.cardRing, lineWidth: 0.8)
                 )
                 .shadow(
                     color: palette.cardShadow.opacity(palette.cardShadowOpacity),
                     radius: palette.cardShadowRadius,
                     y: palette.cardShadowY
                 )
-        )
+                .padding(SpecRuneFlowTokens.trayPadding)
+                .overlay { glowLayer }
+
+            content
+                .padding(SpecRuneFlowTokens.trayPadding)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: SpecRuneFlowTokens.trayRadius, style: .continuous))
+        .onTapGesture(perform: onTap)
+        .opacity(visible ? 1 : 0)
+        .offset(y: visible ? 0 : 6)
+        .scaleEffect(visible ? 1 : 0.98)
         .onAppear {
             guard !reduceMotion else {
-                progress = step.progress
+                visible = true
                 return
             }
-            withAnimation(SpecRuneFlowTokens.meter.delay(0.3)) {
-                progress = step.progress
-            }
+            withAnimation(SpecRuneFlowTokens.enter) { visible = true }
         }
     }
-}
 
-struct FlowDemoRootCard: View {
-    let palette: SpecRuneFlowTokens.Palette
-
-    var body: some View {
+    private var content: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 9) {
-                FlowDemoMark(color: palette.blue, size: 26)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("SpecRune 工作流图")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(palette.ink)
-                        .lineLimit(1)
-                    Text("@dae · 阶段 2 / 3")
-                        .font(.system(size: 10.5, weight: .medium))
+            topRow
+            activityRow
+            meterRow
+            footRow
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 9)
+        .padding(.bottom, 10)
+    }
+
+    private var topRow: some View {
+        HStack(spacing: 8) {
+            PixelMark(
+                seed: node.id,
+                color: node.color,
+                active: isActive,
+                time: time,
+                reduceMotion: reduceMotion,
+                palette: palette
+            )
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(node.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(palette.ink)
+                    .lineLimit(1)
+                if let model = node.model {
+                    Text(model)
+                        .font(.system(size: 11.5))
                         .foregroundStyle(palette.muted)
                         .lineLimit(1)
                 }
-                Spacer(minLength: 0)
-                FlowDemoStatusBadge(text: "运行中", color: palette.blue)
             }
-
-            Text("正在复刻卡片、连线与动效")
-                .font(.system(size: 11.5))
-                .foregroundStyle(palette.text)
-                .lineLimit(1)
 
             Spacer(minLength: 0)
 
-            FlowDemoMeter(progress: 0.62, color: palette.blue, palette: palette)
+            statusPill
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-                .fill(palette.card)
-                .overlay(
-                    RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-                        .strokeBorder(palette.cardRing, lineWidth: 1)
-                )
-                .shadow(
-                    color: palette.cardShadow.opacity(palette.cardShadowOpacity),
-                    radius: palette.cardShadowRadius,
-                    y: palette.cardShadowY
-                )
+        .frame(height: 24)
+    }
+
+    private var statusPill: some View {
+        HStack(spacing: 3) {
+            statusIcon
+            Text(node.status.label)
+                .font(.system(size: 11, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundStyle(statusForeground)
+        .padding(.horizontal, 7)
+        .frame(height: SpecRuneFlowTokens.statusHeight)
+        .background(statusBackground, in: Capsule())
+    }
+
+    private var statusBackground: Color {
+        switch node.status {
+        case .active: palette.brandBackground
+        case .done: palette.okBackground
+        case .idle: palette.fill
+        case .unknown: palette.fill
+        }
+    }
+
+    private var statusForeground: Color {
+        switch node.status {
+        case .active: palette.brandForeground
+        case .done: palette.okForeground
+        case .idle, .unknown: palette.text
+        }
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        switch node.status {
+        case .active:
+            RotatingRing(color: node.color, time: time, reduceMotion: reduceMotion)
+        case .done:
+            Image(systemName: "checkmark")
+                .font(.system(size: 8, weight: .bold))
+        case .idle:
+            Circle().fill(palette.muted.opacity(0.6)).frame(width: 5, height: 5)
+        case .unknown:
+            Image(systemName: "minus")
+                .font(.system(size: 8, weight: .bold))
+        }
+    }
+
+    private var activityRow: some View {
+        ShineText(
+            text: node.activity,
+            active: isActive,
+            time: time,
+            reduceMotion: reduceMotion,
+            palette: palette,
+            color: node.color
         )
+        .frame(height: 17, alignment: .leading)
+    }
+
+    private var meterRow: some View {
+        HStack(spacing: 8) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(palette.fill)
+                    Capsule()
+                        .fill(node.color)
+                        .frame(width: max(0, min(1, node.progress)) * geo.size.width)
+                }
+            }
+            .frame(height: SpecRuneFlowTokens.meterHeight)
+
+            Text(node.progressLabel)
+                .font(.system(size: 11.5).monospacedDigit())
+                .foregroundStyle(palette.muted)
+                .lineLimit(1)
+        }
+        .frame(height: 14)
+    }
+
+    private var footRow: some View {
+        HStack(spacing: 6) {
+            ForEach(0 ..< 2, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(palette.card)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(palette.line, lineWidth: 0.8)
+                    )
+                    .frame(width: 17, height: 17)
+                    .overlay {
+                        Image(systemName: index == 0 ? "arrow.turn.down.left" : "text.bubble")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(palette.muted)
+                    }
+            }
+
+            if let text = node.footText {
+                Text(text)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(palette.muted)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(height: SpecRuneFlowTokens.footHeight)
+        .padding(.horizontal, 6)
+    }
+
+    @ViewBuilder
+    private var glowLayer: some View {
+        if glow > 0, !reduceMotion {
+            let rise = glow
+            Ellipse()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            node.color.opacity(0.75 * (1 - rise)),
+                            node.color.opacity(0.28 * (1 - rise)),
+                            .clear,
+                        ],
+                        center: .bottom,
+                        startRadius: 2,
+                        endRadius: 120 * (1 + rise)
+                    )
+                )
+                .frame(height: 70)
+                .scaleEffect(x: 1 + rise * 0.5, y: 1 + rise * 1.2, anchor: .bottom)
+                .offset(y: -18 - rise * 10)
+                .opacity(1 - rise)
+                .blur(radius: 6)
+                .clipShape(RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous))
+                .allowsHitTesting(false)
+        }
     }
 }
 
 // MARK: - 零件
 
-struct FlowDemoMark: View {
+/// 3×3 像素头像：`active` 时按原版的 1.2s ease-in-out 交错闪烁。
+struct PixelMark: View {
+    let seed: String
     let color: Color
-    let size: CGFloat
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-            .fill(color.opacity(0.14))
-            .overlay(
-                RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
-                    .strokeBorder(color.opacity(0.3), lineWidth: 0.8)
-            )
-            .overlay {
-                VStack(spacing: size * 0.1) {
-                    HStack(spacing: size * 0.1) {
-                        dot
-                        dot
-                    }
-                    HStack(spacing: size * 0.1) {
-                        dot
-                        dot
-                    }
-                }
-            }
-            .frame(width: size, height: size)
-    }
-
-    private var dot: some View {
-        RoundedRectangle(cornerRadius: size * 0.05, style: .continuous)
-            .fill(color.opacity(0.72))
-            .frame(width: size * 0.22, height: size * 0.22)
-    }
-}
-
-struct FlowDemoStatusBadge: View {
-    let text: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(color)
-                .frame(width: 5, height: 5)
-            Text(text)
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(color)
-        }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2.5)
-        .background(color.opacity(0.1), in: Capsule())
-    }
-}
-
-struct FlowDemoStepIcon: View {
-    let status: FlowDemoStepStatus
-    let color: Color
-    let palette: SpecRuneFlowTokens.Palette
+    let active: Bool
+    let time: Double
     let reduceMotion: Bool
+    let palette: SpecRuneFlowTokens.Palette
 
-    @State private var spinning = false
+    private static let delays: [Double] = [0, 0.12, 0.24, 0.12, 0.24, 0.36, 0.24, 0.36, 0.48]
 
     var body: some View {
-        Group {
-            switch status {
-            case .done:
-                Image(systemName: "checkmark")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(palette.okForeground)
-            case .active:
-                Circle()
-                    .trim(from: 0.08, to: 0.72)
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
-                    .rotationEffect(.degrees(spinning ? 360 : 0))
-                    .frame(width: 11, height: 11)
-                    .onAppear {
-                        guard !reduceMotion else { return }
-                        withAnimation(SpecRuneFlowTokens.spin.repeatForever(autoreverses: false)) {
-                            spinning = true
+        let dots = Self.pattern(seed)
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(palette.card)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(palette.line, lineWidth: 0.8)
+                )
+
+            VStack(spacing: 1.5) {
+                ForEach(0 ..< 3, id: \.self) { row in
+                    HStack(spacing: 1.5) {
+                        ForEach(0 ..< 3, id: \.self) { column in
+                            pixel(index: row * 3 + column, on: dots[row * 3 + column])
                         }
                     }
-            case .idle:
-                Circle()
-                    .fill(palette.muted.opacity(0.55))
-                    .frame(width: 7, height: 7)
-            case .unknown:
-                Text("—")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(palette.muted)
-            }
-        }
-        .frame(width: 14, height: 14)
-    }
-}
-
-struct FlowDemoMeter: View {
-    let progress: Double
-    let color: Color
-    let palette: SpecRuneFlowTokens.Palette
-
-    var body: some View {
-        HStack(spacing: 8) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(palette.line)
-                    Capsule()
-                        .fill(color)
-                        .frame(width: max(0, min(1, progress)) * geo.size.width)
                 }
             }
-            .frame(height: 3)
-
-            Text("\(Int((max(0, min(1, progress)) * 100).rounded()))%")
-                .font(.system(size: 10, weight: .medium).monospacedDigit())
-                .foregroundStyle(palette.muted)
-                .frame(width: 30, alignment: .trailing)
         }
+        .frame(width: SpecRuneFlowTokens.avatarSize, height: SpecRuneFlowTokens.avatarSize)
+    }
+
+    private func pixel(index: Int, on: Bool) -> some View {
+        let opacity: Double = {
+            guard on else { return active ? 0.16 : 0 }
+            guard active, !reduceMotion else { return 1 }
+            let phase = (time + Self.delays[index]).truncatingRemainder(dividingBy: SpecRuneFlowTokens.pixel)
+            let wave = 0.5 + 0.5 * cos(2 * .pi * phase / SpecRuneFlowTokens.pixel)
+            return 0.2 + 0.8 * wave
+        }()
+
+        return RoundedRectangle(cornerRadius: 0.75, style: .continuous)
+            .fill(color)
+            .frame(width: 3, height: 3)
+            .opacity(opacity)
+    }
+
+    static func pattern(_ seed: String) -> [Bool] {
+        var hash: UInt64 = 0
+        for scalar in seed.unicodeScalars {
+            hash = hash &* 31 &+ UInt64(scalar.value)
+        }
+        var cells = [Bool](repeating: false, count: 9)
+        for index in 0 ..< 9 {
+            cells[index] = (hash >> UInt64(index)) & 1 == 1
+        }
+        // 保证至少 5 个点亮，避免出现过于稀疏的图案。
+        if cells.filter({ $0 }).count < 5 {
+            for index in 0 ..< 9 where !cells[index] {
+                cells[index] = true
+                if cells.filter({ $0 }).count >= 5 { break }
+            }
+        }
+        return cells
     }
 }
 
-/// 卡片下方那条浅色托盘。
-struct FlowDemoFootBar: View {
-    let text: String
-    let palette: SpecRuneFlowTokens.Palette
+/// active 的加载环：原版 `ui-acr-spin` 900ms linear infinite。
+struct RotatingRing: View {
+    let color: Color
+    let time: Double
+    let reduceMotion: Bool
 
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: "arrow.turn.down.left")
-                .font(.system(size: 8, weight: .semibold))
-            Image(systemName: "text.bubble")
-                .font(.system(size: 8, weight: .semibold))
-            Text(text)
-                .font(.system(size: 9.5, weight: .medium))
-                .lineLimit(1)
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(palette.muted)
-        .padding(.horizontal, 10)
-        .frame(width: SpecRuneFlowTokens.cardWidth, height: FlowBoardMetrics.footHeight)
-        .background(
-            UnevenRoundedRectangle(
-                bottomLeadingRadius: SpecRuneFlowTokens.radius,
-                bottomTrailingRadius: SpecRuneFlowTokens.radius,
-                style: .continuous
-            )
-            .fill(palette.fill)
-        )
+        let angle = reduceMotion ? 0 : time.truncatingRemainder(dividingBy: SpecRuneFlowTokens.spin) / SpecRuneFlowTokens.spin * 360
+        Circle()
+            .trim(from: 0.08, to: 0.72)
+            .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            .rotationEffect(.degrees(angle))
+            .frame(width: 10, height: 10)
     }
 }
 
-// MARK: - Demo 入口页
+/// active 活动文字的三段扫光，对应 `ui-acr-shine` 的 2s linear infinite。
+struct ShineText: View {
+    let text: String
+    let active: Bool
+    let time: Double
+    let reduceMotion: Bool
+    let palette: SpecRuneFlowTokens.Palette
+    let color: Color
+
+    var body: some View {
+        let phase = reduceMotion ? 0.5 : (time.truncatingRemainder(dividingBy: SpecRuneFlowTokens.shine) / SpecRuneFlowTokens.shine)
+        let head = 1.5 - phase * 2.4
+
+        Text(text)
+            .font(.system(size: 12.5))
+            .lineLimit(1)
+            .foregroundStyle(palette.text)
+            .overlay {
+                if active, !reduceMotion {
+                    Text(text)
+                        .font(.system(size: 12.5))
+                        .lineLimit(1)
+                        .foregroundStyle(palette.ink)
+                        .mask {
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0),
+                                    .init(color: .black, location: 0.42),
+                                    .init(color: .black, location: 0.58),
+                                    .init(color: .clear, location: 1),
+                                ],
+                                startPoint: UnitPoint(x: head, y: 0.5),
+                                endPoint: UnitPoint(x: head + 0.55, y: 0.5)
+                            )
+                        }
+                }
+            }
+    }
+}
+
+// MARK: - 节点面板
+
+struct FlowNodePanel: View {
+    let node: FlowNodeModel
+    let palette: SpecRuneFlowTokens.Palette
+    let onAction: (String) -> Void
+    let onClose: () -> Void
+
+    private let actions: [(title: String, value: String, primary: Bool)] = [
+        ("Approve", "approve", true),
+        ("Decline", "decline", false),
+        ("跳过", "skip", false),
+        ("补做", "redo", false),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                PixelMark(
+                    seed: node.id, color: node.color, active: false,
+                    time: 0, reduceMotion: true, palette: palette
+                )
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(node.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(palette.ink)
+                        .lineLimit(1)
+                    Text(node.id)
+                        .font(.system(size: 11))
+                        .foregroundStyle(palette.muted)
+                }
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(palette.muted)
+                        .frame(width: 24, height: 24)
+                        .background(palette.fill, in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(node.activity)
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.text)
+                .lineLimit(2)
+
+            Divider().overlay(palette.line)
+
+            HStack(spacing: 6) {
+                ForEach(actions, id: \.value) { action in
+                    Button {
+                        onAction(action.value)
+                    } label: {
+                        Text(action.title)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(action.primary ? Color.white : palette.ink)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 32)
+                            .background(
+                                action.primary ? palette.brandForeground : palette.card,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(action.primary ? Color.clear : palette.line, lineWidth: 0.8)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 300)
+        .background(palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(palette.cardRing, lineWidth: 0.8)
+        )
+        .shadow(color: .black.opacity(0.22), radius: 22, y: 10)
+    }
+}
+
+// MARK: - Demo 页
 
 struct SpecRuneFlowDemoView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
 
-    @State private var appeared = false
+    @State private var selected: FlowNodeModel?
     @State private var resetToken = 0
+    @State private var lastAction: String?
 
-    private var palette: SpecRuneFlowTokens.Palette {
-        .resolve(colorScheme)
-    }
+    private var palette: SpecRuneFlowTokens.Palette { .resolve(colorScheme) }
 
     private var backdrop: Color {
         colorScheme == .dark ? Color(hex: 0x0D0F14) : Color(hex: 0xF6F7F9)
     }
 
+    private var layout: FlowLayout {
+        FlowLayout(stageCount: 3, childCounts: [4, 3, 3])
+    }
+
     var body: some View {
         NavigationStack {
-            FlowDemoCanvas(
-                contentSize: CGSize(
-                    width: FlowBoardMetrics.boardWidth,
-                    height: FlowBoardMetrics.boardHeight
-                ),
-                resetToken: resetToken
-            ) {
-                FlowDemoBoard(
-                    palette: palette,
-                    appeared: appeared,
-                    reduceMotion: reduceMotion
-                )
+            ZStack {
+                backdrop.ignoresSafeArea()
+
+                FlowDemoCanvas(
+                    contentSize: CGSize(width: layout.boardWidth, height: layout.boardHeight),
+                    resetToken: resetToken
+                ) {
+                    FlowDemoBoard(palette: palette, reduceMotion: reduceMotion) { node in
+                        selected = node
+                    }
+                }
+                .ignoresSafeArea(edges: .bottom)
+
+                if let node = selected {
+                    ZStack {
+                        Color.black.opacity(0.22)
+                            .ignoresSafeArea()
+                            .onTapGesture { selected = nil }
+                        FlowNodePanel(
+                            node: node,
+                            palette: palette,
+                            onAction: { action in
+                                lastAction = "\(node.title) → \(action)"
+                                selected = nil
+                            },
+                            onClose: { selected = nil }
+                        )
+                        .transition(.opacity.combined(with: .offset(y: -4)).combined(with: .scale(scale: 0.98)))
+                    }
+                }
+
+                if let lastAction {
+                    VStack {
+                        Spacer()
+                        Text(lastAction)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(palette.ink)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(palette.card, in: Capsule())
+                            .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                            .padding(.bottom, 28)
+                    }
+                    .allowsHitTesting(false)
+                }
             }
-            .background(backdrop)
-            .ignoresSafeArea(edges: .bottom)
             .navigationTitle("任务流 · 视觉 Demo")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -812,15 +1073,6 @@ struct SpecRuneFlowDemoView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("关闭") { dismiss() }
                 }
-            }
-        }
-        .onAppear {
-            guard !reduceMotion else {
-                appeared = true
-                return
-            }
-            withAnimation(SpecRuneFlowTokens.enter) {
-                appeared = true
             }
         }
     }
