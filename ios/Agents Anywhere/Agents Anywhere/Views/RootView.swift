@@ -5,6 +5,8 @@ struct RootView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var showingManualLogin = false
     @State private var showingQRCodeLogin = false
+    /// 任务流视觉 Demo 的临时入口（demo 分支专用，不进 main）。
+    @State private var showingFlowDemo = false
 
     var body: some View {
         Group {
@@ -19,6 +21,25 @@ struct RootView: View {
             case .signedIn:
                 ChatShellView()
             }
+        }
+        // 视觉 Demo 的调试入口：与登录态无关，点按钮打开，方便在模拟器/真机上随时对照。
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                showingFlowDemo = true
+            } label: {
+                Label("任务流 Demo", systemImage: "square.grid.3x3")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(.black.opacity(0.08), lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 16)
+            .padding(.bottom, 156)
+        }
+        .sheet(isPresented: $showingFlowDemo) {
+            SpecRuneFlowDemoView()
         }
         .sheet(isPresented: $showingManualLogin) {
             ManualLoginView(appState: appState) {
