@@ -26,25 +26,25 @@ struct FlowNodeModel: Identifiable {
     let progressLabel: String
     let footText: String?
     let color: Color
+    let colorIndex: Int
     var children: [FlowNodeModel]
 
     static func makeTree(rootColor: Color) -> FlowNodeModel {
-        let colors = SpecRuneFlowTokens.nodeColors
-        let plan = [
-            node("1.1", "需求探索", "explore", .done, "已确认 6 项事实", 1, .one, "SpecRune prd.md · design.md", colors[0]),
-            node("1.2", "调研", "research", .unknown, "无信号", 0, .zero, nil, colors[0]),
-            node("1.3", "配置上下文", "context", .done, "7 + 5 条已策展", 1, .one, "SpecRune 清单 12 条", colors[0]),
-            node("1.4", "激活任务", "start", .done, "已绑定本会话", 1, .one, nil, colors[0]),
+                let plan = [
+            node("1.1", "需求探索", "explore", .done, "已确认 6 项事实", 1, .one, "SpecRune prd.md · design.md", 0),
+            node("1.2", "调研", "research", .unknown, "无信号", 0, .zero, nil, 0),
+            node("1.3", "配置上下文", "context", .done, "7 + 5 条已策展", 1, .one, "SpecRune 清单 12 条", 0),
+            node("1.4", "激活任务", "start", .done, "已绑定本会话", 1, .one, nil, 0),
         ]
         let execute = [
-            node("2.1", "实现", "implement", .active, "正在复刻卡片与连线", 0.64, .percent(0.64), "SpecRune 4/6 文件已改", colors[1]),
-            node("2.2", "新鲜复查", "review", .idle, "等待实现完成", 0, .zero, nil, colors[1]),
-            node("2.3", "修复", "fix", .idle, "通常不需要", 0, .zero, nil, colors[1]),
+            node("2.1", "实现", "implement", .active, "正在复刻卡片与连线", 0.64, .percent(0.64), "SpecRune 4/6 文件已改", 1),
+            node("2.2", "新鲜复查", "review", .idle, "等待实现完成", 0, .zero, nil, 1),
+            node("2.3", "修复", "fix", .idle, "通常不需要", 0, .zero, nil, 1),
         ]
         let finish = [
-            node("3.2", "更新规范", "spec", .idle, "无新增契约", 0, .zero, nil, colors[2]),
-            node("3.3", "提交", "commit", .idle, "代码与规范同提", 0, .zero, nil, colors[2]),
-            node("3.4", "归档", "archive", .unknown, "验收通过后", 0, .zero, nil, colors[2]),
+            node("3.2", "更新规范", "spec", .idle, "无新增契约", 0, .zero, nil, 2),
+            node("3.3", "提交", "commit", .idle, "代码与规范同提", 0, .zero, nil, 2),
+            node("3.4", "归档", "archive", .unknown, "验收通过后", 0, .zero, nil, 2),
         ]
         return FlowNodeModel(
             id: "root",
@@ -56,24 +56,25 @@ struct FlowNodeModel: Identifiable {
             progressLabel: "124k / 200k",
             footText: "最近一次注入",
             color: rootColor,
+            colorIndex: 0,
             children: [
                 FlowNodeModel(
                     id: "stage-1", title: "Plan 阶段", model: "1.0 → 1.4",
                     status: .done, activity: "prd.md · design.md · 清单 7/5",
                     progress: 1, progressLabel: "200k / 200k",
-                    footText: "最近一次注入", color: colors[0], children: plan
+                    footText: "最近一次注入", color: SpecRuneFlowTokens.nodeColors[0], colorIndex: 0, children: plan
                 ),
                 FlowNodeModel(
                     id: "stage-2", title: "Execute 阶段", model: "2.1 → 2.3",
                     status: .active, activity: "2.1 实现中 · 4/6 文件已改",
                     progress: 0.58, progressLabel: "116k / 200k",
-                    footText: "最近一次注入", color: colors[1], children: execute
+                    footText: "最近一次注入", color: SpecRuneFlowTokens.nodeColors[1], colorIndex: 1, children: execute
                 ),
                 FlowNodeModel(
                     id: "stage-3", title: "Finish 阶段", model: "3.2 → 3.4",
                     status: .idle, activity: "等 Execute 收尾",
                     progress: 0, progressLabel: "0 / 200k",
-                    footText: "最近一次注入", color: colors[2], children: finish
+                    footText: "最近一次注入", color: SpecRuneFlowTokens.nodeColors[2], colorIndex: 2, children: finish
                 ),
             ]
         )
@@ -81,11 +82,12 @@ struct FlowNodeModel: Identifiable {
 
     private static func node(
         _ id: String, _ title: String, _ model: String, _ status: FlowNodeStatus,
-        _ activity: String, _ ratio: Double, _ label: ProgressLabel, _ foot: String?, _ color: Color
+        _ activity: String, _ ratio: Double, _ label: ProgressLabel, _ foot: String?, _ colorIndex: Int
     ) -> FlowNodeModel {
         FlowNodeModel(
             id: id, title: title, model: model, status: status, activity: activity,
-            progress: ratio, progressLabel: label.text, footText: foot, color: color, children: []
+            progress: ratio, progressLabel: label.text, footText: foot,
+            color: SpecRuneFlowTokens.nodeColors[colorIndex], colorIndex: colorIndex, children: []
         )
     }
 
@@ -520,12 +522,12 @@ struct FlowLinksLayer: View {
             ForEach(Array(timeline.activeHops(at: time).enumerated()), id: \.offset) { _, active in
                 let hop = timeline.hops[active.index]
                 let length = max(hop.length, 1)
-                let head = -8 + active.progress * (length + 16)
+                let center = -22 + active.progress * (length + 44)
 
                 ForEach(0 ..< 8, id: \.self) { layer in
-                    let dash = 16.0 * Double(8 - layer) / 8
-                    let lower = max(0, (head - dash) / length)
-                    let upper = min(1, head / length)
+                    let dash = 44.0 * Double(8 - layer) / 8
+                    let lower = max(0, (center - dash / 2) / length)
+                    let upper = min(1, (center + dash / 2) / length)
                     if upper > lower {
                         hop.path
                             .trimmedPath(from: lower, to: upper)
@@ -822,35 +824,43 @@ struct FlowNodeCard: View {
             let fade = rise < 0.3 ? 1 : max(0, 1 - (rise - 0.3) / 0.7)
             // 原版波形由 `A(e, t)` 每帧用正弦重算，1100ms 走完一个周期。
             let phase = (time / 1.1) * 2 * .pi
+            let floors = SpecRuneFlowTokens.floorColors(node.colorIndex)
 
             ZStack(alignment: .bottom) {
                 // 彩色层：`--ui-acr-gf--color` 270×88、blur 14、底边下 45 升到上 36。
+                // 渐变取自 floor-1/2/3：顶部最浅、底部最深（SVG 坐标 y 向下）。
                 GroundWave(phase: phase, light: false)
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: node.color.opacity(0.8), location: 0),
-                                .init(color: node.color.opacity(0.48), location: 0.3),
-                                .init(color: node.color.opacity(0.2), location: 0.67),
-                                .init(color: node.color.opacity(0), location: 1),
+                                .init(color: floors.top, location: 0),
+                                .init(color: floors.mid, location: 0.302885),
+                                .init(color: floors.bottom, location: 0.673077),
                             ],
-                            startPoint: .bottom,
-                            endPoint: .top
+                            // 原版是 `userSpaceOnUse`，y 从 423.3 到 894.3（viewBox 高 1514.1）。
+                            startPoint: UnitPoint(x: 0.5, y: 423.3 / 1514.1),
+                            endPoint: UnitPoint(x: 0.5, y: 894.3 / 1514.1)
                         )
                     )
-                    .frame(width: 270, height: 88)
+                    // `--ui-acr-gf-bleed` 的 inset: -31.27% -10.17%，把 SVG 画布撑大到 326×143。
+                    .frame(width: 270 * 1.2034, height: 88 * 1.6254)
                     .scaleEffect(x: 1 + rise * 0.08, y: 1 + rise, anchor: .bottom)
                     .offset(y: 45 - rise * 81)
                     .blur(radius: 14)
 
-                // 白色层：`--ui-acr-gf--light` 228×74、blur 12、`mix-blend-mode: plus-lighter`。
+                // 白色层：`--ui-acr-gf--light` 228×74、blur 12、fill #fff / opacity .8（深色 .2）。
                 GroundWave(phase: phase, light: true)
-                    .fill(Color.white.opacity(palette.card == .clear ? 0.18 : 0.72))
-                    .frame(width: 228, height: 74)
+                    .fill(Color.white.opacity(palette.card == .clear ? 0.2 : 0.8))
+                    .frame(width: 228 * 1.2034, height: 74 * 1.6254)
                     .scaleEffect(x: 1 + rise * 0.04, y: 1 + rise * 0.8, anchor: .bottom)
                     .offset(y: 48 - rise * 72)
                     .blur(radius: 12)
                     .blendMode(.plusLighter)
+
+                // `--ui-acr-floor-veil`：浅色模式盖一层 40% 白纱，深色是 transparent。
+                if palette.card != .clear {
+                    Color.white.opacity(0.4)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .opacity(fade)
@@ -901,7 +911,7 @@ struct GroundWave: Shape {
             CGPoint(x: point.x, y: point.y + CGFloat(offset) * k)
         }
         func horizontal(_ x: CGFloat, _ point: CGPoint) -> CGPoint {
-            CGPoint(x: x, y: shifted(point, 0).y)
+            CGPoint(x: x, y: point.y)
         }
 
         var path = Path()
@@ -915,13 +925,13 @@ struct GroundWave: Shape {
         path.addLine(to: map(CGPoint(x: right.x, y: bottom)))
         path.addLine(to: map(shifted(right, rr)))
         path.addLine(to: map(shifted(v4, vR)))
-        path.addLine(to: map(horizontal(v3.x, v4)))
+        path.addLine(to: map(horizontal(v3.x, shifted(v4, vR))))
         path.addLine(to: map(shifted(v3, vR)))
         path.addLine(to: map(shifted(m2, m)))
-        path.addLine(to: map(horizontal(m1.x, m2)))
+        path.addLine(to: map(horizontal(m1.x, shifted(m2, m))))
         path.addLine(to: map(shifted(m1, m)))
         path.addLine(to: map(shifted(v2, vL)))
-        path.addLine(to: map(horizontal(v1.x, v2)))
+        path.addLine(to: map(horizontal(v1.x, shifted(v2, vL))))
         path.addLine(to: map(shifted(v1, vL)))
         path.closeSubpath()
         return path

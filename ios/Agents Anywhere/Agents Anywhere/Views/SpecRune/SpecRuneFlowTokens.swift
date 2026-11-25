@@ -89,6 +89,33 @@ enum SpecRuneFlowTokens {
 
     // MARK: - 节点主题色（按层级索引取色）
 
+    /// 节点主题色的 RGB 分量，供地面闪光按原版 `color-mix` 公式算 floor-1/2/3。
+    static let nodeColorRGBA: [(r: Double, g: Double, b: Double, a: Double)] = [
+        (166 / 255, 81 / 255, 240 / 255, 0.85),
+        (20 / 255, 179 / 255, 240 / 255, 0.85),
+        (95 / 255, 200 / 255, 138 / 255, 0.9),
+        (238 / 255, 62 / 255, 158 / 255, 0.8),
+        (94 / 255, 106 / 255, 210 / 255, 0.85),
+        (20 / 255, 160 / 255, 150 / 255, 0.85),
+    ]
+
+    /// `--ui-acr-floor-1/2/3`：顶浅、中主色、底深，各自带 alpha。
+    static func floorColors(_ index: Int) -> (top: Color, mid: Color, bottom: Color) {
+        let rgba = nodeColorRGBA[index % nodeColorRGBA.count]
+        let top = Color(
+            red: rgba.r * 0.55 + 0.45,
+            green: rgba.g * 0.55 + 0.45,
+            blue: rgba.b * 0.55 + 0.45
+        ).opacity(0.55)
+        let mid = Color(red: rgba.r, green: rgba.g, blue: rgba.b).opacity(0.5)
+        let bottom = Color(
+            red: rgba.r * 0.85,
+            green: rgba.g * 0.85,
+            blue: rgba.b * 0.85
+        ).opacity(0.45)
+        return (top, mid, bottom)
+    }
+
     static let nodeColors: [Color] = [
         Color(red: 166 / 255, green: 81 / 255, blue: 240 / 255).opacity(0.85),
         Color(red: 20 / 255, green: 179 / 255, blue: 240 / 255).opacity(0.85),
