@@ -169,6 +169,7 @@ struct FlowTimeline {
     struct Hop {
         let id: String
         let path: Path
+        let length: CGFloat
         let targetID: String
         let color: Color
     }
@@ -176,29 +177,31 @@ struct FlowTimeline {
     let hops: [Hop]
     let nodeRects: [String: CGRect]
 
-    static let hopDuration: Double = 0.55
-    static let hopGap: Double = 0.14
-    static let startDelay: Double = 1.1
-    static let tailPause: Double = 2.2
+    static let hopDuration: Double = 0.38
+    /// 下一条 hop 在上一条开始后 300ms 启动（原版 `t += s - 80`）。
+    static let hopStep: Double = 0.30
+    static let startDelay: Double = 0.7
+    static let tailPause: Double = 1.4
     static let glowDuration: Double = SpecRuneFlowTokens.glow
 
     var cycle: Double {
         guard !hops.isEmpty else { return 4 }
-        return Self.startDelay + Double(hops.count) * (Self.hopDuration + Self.hopGap) + Self.tailPause
+        return Self.startDelay + Double(max(hops.count - 1, 0)) * Self.hopStep + Self.hopDuration + Self.tailPause
     }
 
-    /// 当前跑到第几个 hop、进度多少。
-    func currentHop(at time: Double) -> (index: Int, progress: Double)? {
-        guard !hops.isEmpty else { return nil }
+    /// 同时活跃的 hop（原版是重叠启动的，可能有多条一起跑）。
+    func activeHops(at time: Double) -> [(index: Int, progress: Double)] {
+        guard !hops.isEmpty else { return [] }
         let local = time.truncatingRemainder(dividingBy: cycle)
-        let slot = Self.hopDuration + Self.hopGap
-        let offset = local - Self.startDelay
-        guard offset >= 0 else { return nil }
-        let index = Int(offset / slot)
-        guard index < hops.count else { return nil }
-        let progress = (offset - Double(index) * slot) / Self.hopDuration
-        guard progress <= 1 else { return nil }
-        return (index, max(0, min(1, progress)))
+        var result: [(Int, Double)] = []
+        for index in hops.indices {
+            let start = Self.startDelay + Double(index) * Self.hopStep
+            let progress = (local - start) / Self.hopDuration
+            if progress >= 0, progress <= 1 {
+                result.append((index, progress))
+            }
+        }
+        return result
     }
 
     /// 节点落地闪光的进度（0 表示不在闪）。
@@ -206,7 +209,7 @@ struct FlowTimeline {
         guard !hops.isEmpty else { return 0 }
         let local = time.truncatingRemainder(dividingBy: cycle)
         for (index, hop) in hops.enumerated() where hop.targetID == nodeID {
-            let arrive = Self.startDelay + Double(index) * (Self.hopDuration + Self.hopGap) + Self.hopDuration
+            let arrive = Self.startDelay + Double(index) * Self.hopStep + Self.hopDuration
             let delta = local - arrive
             guard delta >= 0, delta < Self.glowDuration else { continue }
             return delta / Self.glowDuration
@@ -354,6 +357,7 @@ final class FitScrollView: UIScrollView {
 struct FlowDemoBoard: View {
     let palette: SpecRuneFlowTokens.Palette
     let reduceMotion: Bool
+    let appeared: Bool
     let onSelect: (FlowNodeModel) -> Void
 
     @State private var tree: FlowNodeModel = FlowNodeModel.makeTree(rootColor: .blue)
@@ -376,8 +380,14 @@ struct FlowDemoBoard: View {
             for (childIndex, child) in stage.children.enumerated() {
                 let childRect = layout.childRect(stageIndex, childIndex)
                 rects[child.id] = childRect
-                let path = Self.linkPath(from: stageRect, to: childRect)
-                hops.append(.init(id: "\(stage.id)>\(child.id)", path: path, targetID: child.id, color: stage.color))
+                let link = Self.linkPath(from: stageRect, to: childRect)
+                hops.append(.init(
+                    id: "\(stage.id)>\(child.id)",
+                    path: link.path,
+                    length: link.length,
+                    targetID: child.id,
+                    color: stage.color
+                ))
             }
         }
         return FlowTimeline(hops: hops, nodeRects: rects)
@@ -396,7 +406,9 @@ struct FlowDemoBoard: View {
                         tree: tree,
                         timeline: timeline,
                         palette: palette,
-                        time: time
+                        time: time,
+                        appeared: appeared,
+                        reduceMotion: reduceMotion
                     )
 
                     nodeView(tree, rect: layout.rootRect, timeline: timeline, time: time)
@@ -442,18 +454,20 @@ struct FlowDemoBoard: View {
     }
 
     /// 父卡左下 17pt 处下竖线，圆角拐进子卡左侧 25pt 处。
-    static func linkPath(from parent: CGRect, to child: CGRect) -> Path {
+    static func linkPath(from parent: CGRect, to child: CGRect) -> (path: Path, length: CGFloat) {
         let start = CGPoint(x: parent.minX + 17, y: parent.maxY)
         let endX = child.minX
         let endY = child.minY + 25
 
         var path = Path()
         path.move(to: start)
+
         let deltaX = endX - start.x
         guard deltaX > 0.5 else {
             path.addLine(to: CGPoint(x: start.x, y: endY))
-            return path
+            return (path, abs(endY - start.y))
         }
+
         let corner = min(8, deltaX / 2, max(0, (endY - start.y) / 2))
         path.addLine(to: CGPoint(x: start.x, y: endY - corner))
         path.addQuadCurve(
@@ -461,8 +475,11 @@ struct FlowDemoBoard: View {
             control: CGPoint(x: start.x, y: endY)
         )
         path.addLine(to: CGPoint(x: endX, y: endY))
-        return path
+
+        let length = max(0, endY - start.y - corner) + corner * .pi / 2 + max(0, deltaX - corner)
+        return (path, length)
     }
+
 }
 
 // MARK: - 连线 / 光带 / 落地闪光
@@ -473,11 +490,14 @@ struct FlowLinksLayer: View {
     let timeline: FlowTimeline
     let palette: SpecRuneFlowTokens.Palette
     let time: Double
+    let appeared: Bool
+    let reduceMotion: Bool
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(Array(timeline.hops.enumerated()), id: \.offset) { item in
                 item.element.path
+                    .trimmedPath(from: 0, to: appeared ? 1 : 0)
                     .stroke(
                         item.element.color.opacity(0.88),
                         style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round)
@@ -495,18 +515,31 @@ struct FlowLinksLayer: View {
                 }
             }
 
-            // 光带：沿当前 hop 的路径跑一段亮线
-            if let current = timeline.currentHop(at: time) {
-                let hop = timeline.hops[current.index]
-                let head = current.progress
-                let tail = max(0, head - 0.22)
-                let band = hop.path.trimmedPath(from: tail, to: head)
-                band.stroke(hop.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
-                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
-                band.stroke(hop.color.opacity(0.9), style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
-                band.stroke(Color.white.opacity(0.98), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
-                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+            // 光带：原版每 hop 叠 8 条 dash 拖尾（44 → 5.5px），dash 从路径前 22pt
+            // 流到后 22pt，形成「头长尾短」的锥形光流。
+            ForEach(Array(timeline.activeHops(at: time).enumerated()), id: \.offset) { _, active in
+                let hop = timeline.hops[active.index]
+                let length = max(hop.length, 1)
+                let head = -8 + active.progress * (length + 16)
+
+                ForEach(0 ..< 8, id: \.self) { layer in
+                    let dash = 16.0 * Double(8 - layer) / 8
+                    let lower = max(0, (head - dash) / length)
+                    let upper = min(1, head / length)
+                    if upper > lower {
+                        hop.path
+                            .trimmedPath(from: lower, to: upper)
+                            .stroke(
+                                hop.color.opacity(0.95),
+                                style: StrokeStyle(lineWidth: 2.6, lineCap: .butt)
+                            )
+                            .frame(
+                                width: layout.boardWidth,
+                                height: layout.boardHeight,
+                                alignment: .topLeading
+                            )
+                    }
+                }
             }
 
             // 根卡母线
@@ -516,6 +549,7 @@ struct FlowLinksLayer: View {
             .frame(width: layout.boardWidth, height: layout.boardHeight)
         }
         .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+        .animation(reduceMotion ? nil : SpecRuneFlowTokens.linkDraw.delay(SpecRuneFlowTokens.linkDrawDelay), value: appeared)
     }
 
     private func mixed(_ color: Color) -> Color {
@@ -1052,6 +1086,7 @@ struct SpecRuneFlowDemoView: View {
 
     @State private var selected: FlowNodeModel?
     @State private var resetToken = 0
+    @State private var appeared = false
     @State private var lastAction: String?
 
     private var palette: SpecRuneFlowTokens.Palette { .resolve(colorScheme) }
@@ -1073,7 +1108,7 @@ struct SpecRuneFlowDemoView: View {
                     contentSize: CGSize(width: layout.boardWidth, height: layout.boardHeight),
                     resetToken: resetToken
                 ) {
-                    FlowDemoBoard(palette: palette, reduceMotion: reduceMotion) { node in
+                    FlowDemoBoard(palette: palette, reduceMotion: reduceMotion, appeared: appeared) { node in
                         selected = node
                     }
                 }
@@ -1111,6 +1146,13 @@ struct SpecRuneFlowDemoView: View {
                     }
                     .allowsHitTesting(false)
                 }
+            }
+            .onAppear {
+                guard !reduceMotion else {
+                    appeared = true
+                    return
+                }
+                withAnimation(SpecRuneFlowTokens.enter) { appeared = true }
             }
             .navigationTitle("任务流 · 视觉 Demo")
             .navigationBarTitleDisplayMode(.inline)
