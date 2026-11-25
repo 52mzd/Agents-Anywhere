@@ -425,7 +425,6 @@ struct FlowDemoBoard: View {
                         timeline: timeline,
                         palette: palette,
                         time: time,
-                        appeared: appeared,
                         reduceMotion: reduceMotion
                     )
 
@@ -447,7 +446,6 @@ struct FlowDemoBoard: View {
                     }
                 }
                 .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
-                .animation(nil, value: time)
             }
         }
         .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
@@ -509,14 +507,15 @@ struct FlowLinksLayer: View {
     let timeline: FlowTimeline
     let palette: SpecRuneFlowTokens.Palette
     let time: Double
-    let appeared: Bool
     let reduceMotion: Bool
+
+    @State private var drew = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(Array(timeline.hops.enumerated()), id: \.offset) { item in
                 item.element.path
-                    .trimmedPath(from: 0, to: appeared ? 1 : 0)
+                    .trimmedPath(from: 0, to: drew ? 1 : 0)
                     .stroke(
                         item.element.color.opacity(0.88),
                         style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round)
@@ -536,7 +535,8 @@ struct FlowLinksLayer: View {
 
             // 光带：原版每 hop 叠 8 条 dash 拖尾（44 → 5.5px），dash 从路径前 22pt
             // 流到后 22pt，形成「头长尾短」的锥形光流。
-            ForEach(Array(timeline.activeHops(at: time).enumerated()), id: \.offset) { _, active in
+            ForEach(Array(timeline.activeHops(at: time).enumerated()), id: \.offset) { item in
+                let active = item.element
                 let hop = timeline.hops[active.index]
                 let length = max(hop.length, 1)
                 let center = -22 + active.progress * (length + 44)
@@ -549,10 +549,12 @@ struct FlowLinksLayer: View {
                         hop.path
                             .trimmedPath(from: lower, to: upper)
                             .stroke(
-                                hop.color.opacity(0.28),
-                                style: StrokeStyle(lineWidth: 1.5, lineCap: .butt)
+                                // 原版 0.2 是为深色面板调的；浅色主题在手机缩放后会看不见，
+                                // 所以浅色提亮，深色仍按原版。
+                                hop.color.opacity(palette.card == .clear ? 0.3 : 0.72),
+                                style: StrokeStyle(lineWidth: palette.card == .clear ? 1.5 : 2.5, lineCap: .butt)
                             )
-                            .shadow(color: hop.color.opacity(0.45), radius: 1.5)
+                            .shadow(color: hop.color.opacity(0.5), radius: 1.5)
                             .frame(
                                 width: layout.boardWidth,
                                 height: layout.boardHeight,
@@ -569,7 +571,15 @@ struct FlowLinksLayer: View {
             .frame(width: layout.boardWidth, height: layout.boardHeight)
         }
         .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
-        .animation(reduceMotion ? nil : SpecRuneFlowTokens.linkDraw.delay(SpecRuneFlowTokens.linkDrawDelay), value: appeared)
+        .onAppear {
+            guard !reduceMotion else {
+                drew = true
+                return
+            }
+            withAnimation(SpecRuneFlowTokens.linkDraw.delay(SpecRuneFlowTokens.linkDrawDelay)) {
+                drew = true
+            }
+        }
     }
 
     private func mixed(_ color: Color) -> Color {
