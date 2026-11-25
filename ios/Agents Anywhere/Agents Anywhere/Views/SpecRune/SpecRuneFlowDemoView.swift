@@ -166,6 +166,16 @@ struct FlowLayout {
 
 // MARK: - 动画时间轴
 
+/// 原版 `data-side`：闪光从卡片的哪一侧升起。
+enum GroundSide {
+    /// 默认，从底部向上（`n.back` 的反向 hop）。
+    case bottom
+    /// 宽屏下根节点到一级子节点，旋转 180° 从上往下。
+    case top
+    /// 二级子节点，宽高互换后旋转 90°，从左往右。
+    case left
+}
+
 /// 把「连线跑光带 → 节点落地闪光」算成 time 的纯函数，方便每帧重算。
 struct FlowTimeline {
     struct Hop {
@@ -174,6 +184,7 @@ struct FlowTimeline {
         let length: CGFloat
         let targetID: String
         let color: Color
+        let side: GroundSide
     }
 
     let hops: [Hop]
@@ -206,17 +217,17 @@ struct FlowTimeline {
         return result
     }
 
-    /// 节点落地闪光的进度（0 表示不在闪）。
-    func glow(for nodeID: String, at time: Double) -> Double {
-        guard !hops.isEmpty else { return 0 }
+    /// 节点落地闪光的进度与方向（nil 表示不在闪）。
+    func glow(for nodeID: String, at time: Double) -> (rise: Double, side: GroundSide)? {
+        guard !hops.isEmpty else { return nil }
         let local = time.truncatingRemainder(dividingBy: cycle)
         for (index, hop) in hops.enumerated() where hop.targetID == nodeID {
             let arrive = Self.startDelay + Double(index) * Self.hopStep + Self.hopDuration
             let delta = local - arrive
             guard delta >= 0, delta < Self.glowDuration else { continue }
-            return delta / Self.glowDuration
+            return (delta / Self.glowDuration, hop.side)
         }
-        return 0
+        return nil
     }
 }
 
@@ -379,6 +390,10 @@ struct FlowDemoBoard: View {
             let stageRect = layout.stageRect(stageIndex)
             rects[stage.id] = stageRect
 
+            // 原版 `data-side` 由 hop 方向决定：宽屏根节点子级用 top、二级子节点用 left、
+            // 反向 hop 用 bottom。这里按列轮流分配，让三种方向都能在 demo 里看到。
+            let side: GroundSide = stageIndex == 0 ? .left : (stageIndex == 1 ? .top : .bottom)
+
             for (childIndex, child) in stage.children.enumerated() {
                 let childRect = layout.childRect(stageIndex, childIndex)
                 rects[child.id] = childRect
@@ -388,7 +403,8 @@ struct FlowDemoBoard: View {
                     path: link.path,
                     length: link.length,
                     targetID: child.id,
-                    color: stage.color
+                    color: stage.color,
+                    side: side
                 ))
             }
         }
@@ -448,7 +464,8 @@ struct FlowDemoBoard: View {
             palette: palette,
             time: time,
             reduceMotion: reduceMotion,
-            glow: timeline.glow(for: node.id, at: time),
+            glow: timeline.glow(for: node.id, at: time)?.rise ?? 0,
+            glowSide: timeline.glow(for: node.id, at: time)?.side ?? .bottom,
             onTap: { onSelect(node) }
         )
         .frame(width: rect.width, height: rect.height)
@@ -618,6 +635,7 @@ struct FlowNodeCard: View {
     let time: Double
     let reduceMotion: Bool
     let glow: Double
+    let glowSide: GroundSide
     let onTap: () -> Void
 
     @State private var visible = false
@@ -822,47 +840,30 @@ struct FlowNodeCard: View {
             let rise = glow
             // 原版 `ui-acr-got`：0–30% 保持满亮，之后线性淡出。
             let fade = rise < 0.3 ? 1 : max(0, 1 - (rise - 0.3) / 0.7)
-            // 原版波形由 `A(e, t)` 每帧用正弦重算，1100ms 走完一个周期。
             let phase = (time / 1.1) * 2 * .pi
             let floors = SpecRuneFlowTokens.floorColors(node.colorIndex)
+            let w = SpecRuneFlowTokens.cardWidth - SpecRuneFlowTokens.trayPadding * 2
+            let h = SpecRuneFlowTokens.nodeHeight - SpecRuneFlowTokens.trayPadding * 2
 
-            ZStack(alignment: .bottom) {
-                // 彩色层：`--ui-acr-gf--color` 270×88、blur 14、底边下 45 升到上 36。
-                // 渐变取自 floor-1/2/3：顶部最浅、底部最深（SVG 坐标 y 向下）。
-                GroundWave(phase: phase, light: false)
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: floors.top, location: 0),
-                                .init(color: floors.mid, location: 0.302885),
-                                .init(color: floors.bottom, location: 0.673077),
-                            ],
-                            // 原版是 `userSpaceOnUse`，y 从 423.3 到 894.3（viewBox 高 1514.1）。
-                            startPoint: UnitPoint(x: 0.5, y: 423.3 / 1514.1),
-                            endPoint: UnitPoint(x: 0.5, y: 894.3 / 1514.1)
-                        )
-                    )
-                    // `--ui-acr-gf-bleed` 的 inset: -31.27% -10.17%，把 SVG 画布撑大到 326×143。
-                    .frame(width: 270 * 1.2034, height: 88 * 1.6254)
-                    .scaleEffect(x: 1 + rise * 0.08, y: 1 + rise, anchor: .bottom)
-                    .offset(y: 45 - rise * 81)
-                    .blur(radius: 14)
-
-                // 白色层：`--ui-acr-gf--light` 228×74、blur 12、fill #fff / opacity .8（深色 .2）。
-                GroundWave(phase: phase, light: true)
-                    .fill(Color.white.opacity(palette.card == .clear ? 0.2 : 0.8))
-                    .frame(width: 228 * 1.2034, height: 74 * 1.6254)
-                    .scaleEffect(x: 1 + rise * 0.04, y: 1 + rise * 0.8, anchor: .bottom)
-                    .offset(y: 48 - rise * 72)
-                    .blur(radius: 12)
-                    .blendMode(.plusLighter)
-
-                // `--ui-acr-floor-veil`：浅色模式盖一层 40% 白纱，深色是 transparent。
-                if palette.card != .clear {
-                    Color.white.opacity(0.4)
+            Group {
+                switch glowSide {
+                case .bottom:
+                    // 默认：从底部向上。
+                    waveBody(rise: rise, phase: phase, floors: floors)
+                        .frame(width: w, height: h)
+                case .top:
+                    // `[data-side="top"] .ui-acr__floor-turn { transform: rotate(180deg) }`
+                    waveBody(rise: rise, phase: phase, floors: floors)
+                        .frame(width: w, height: h)
+                        .rotationEffect(.degrees(180))
+                case .left:
+                    // `[data-side="left"]` 先把容器宽高互换，再绕左上角转 90°。
+                    waveBody(rise: rise, phase: phase, floors: floors)
+                        .frame(width: h, height: w)
+                        .rotationEffect(.degrees(90))
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .frame(width: w, height: h)
             .opacity(fade)
             .clipped()
             .mask(
@@ -871,6 +872,47 @@ struct FlowNodeCard: View {
             .allowsHitTesting(false)
         }
     }
+
+    /// 两层波形 + 浅色模式的 40% 白纱（`--ui-acr-floor-veil`）。
+    private func waveBody(
+        rise: Double,
+        phase: Double,
+        floors: (top: Color, mid: Color, bottom: Color)
+    ) -> some View {
+        ZStack(alignment: .bottom) {
+            GroundWave(phase: phase, light: false)
+                .fill(
+                    LinearGradient(
+                        stops: [
+                            .init(color: floors.top, location: 0),
+                            .init(color: floors.mid, location: 0.302885),
+                            .init(color: floors.bottom, location: 0.673077),
+                        ],
+                        // 原版是 `userSpaceOnUse`，y 从 423.3 到 894.3（viewBox 高 1514.1）。
+                        startPoint: UnitPoint(x: 0.5, y: 423.3 / 1514.1),
+                        endPoint: UnitPoint(x: 0.5, y: 894.3 / 1514.1)
+                    )
+                )
+                // `--ui-acr-gf-bleed` inset -31.27% -10.17%：画布 326×143。
+                .frame(width: 270 * 1.2034, height: 88 * 1.6254)
+                .scaleEffect(x: 1 + rise * 0.08, y: 1 + rise, anchor: .bottom)
+                .offset(y: 45 - rise * 81)
+                .blur(radius: 14)
+
+            GroundWave(phase: phase, light: true)
+                .fill(Color.white.opacity(palette.card == .clear ? 0.2 : 0.8))
+                .frame(width: 228 * 1.2034, height: 74 * 1.6254)
+                .scaleEffect(x: 1 + rise * 0.04, y: 1 + rise * 0.8, anchor: .bottom)
+                .offset(y: 48 - rise * 72)
+                .blur(radius: 12)
+                .blendMode(.plusLighter)
+
+            if palette.card != .clear {
+                Color.white.opacity(0.4)
+            }
+        }
+    }
+
 }
 
 /// 原版 affectUI 的落地闪光波形 `A(e, t)`：五个正弦偏移驱动一条闭合波带。
