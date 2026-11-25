@@ -116,6 +116,8 @@ enum SpecRuneFlowTokens {
     /// 卡片圆角 = 托盘圆角 - 4。
     static let cardRadius: CGFloat = 12
 
+    /// 节点高度（托盘 + 卡片），布局与闪光裁剪共用。
+    static let nodeHeight: CGFloat = 128
     static let avatarSize: CGFloat = 24
     static let statusHeight: CGFloat = 20
     static let footHeight: CGFloat = 28

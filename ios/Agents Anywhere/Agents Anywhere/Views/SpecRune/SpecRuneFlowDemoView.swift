@@ -105,7 +105,7 @@ struct FlowNodeModel: Identifiable {
 
 struct FlowLayout {
     let nodeWidth: CGFloat = SpecRuneFlowTokens.cardWidth
-    let nodeHeight: CGFloat = 128
+    let nodeHeight: CGFloat = SpecRuneFlowTokens.nodeHeight
     let indent: CGFloat = SpecRuneFlowTokens.indent
     let columnGap: CGFloat = SpecRuneFlowTokens.levelGap
     let levelTop: CGFloat = SpecRuneFlowTokens.levelTopMargin
@@ -475,57 +475,55 @@ struct FlowLinksLayer: View {
     let time: Double
 
     var body: some View {
-        Canvas { context, size in
-            // 1. 根卡 → 阶段卡的母线
-            drawRootLinks(context: &context, size: size)
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(timeline.hops.enumerated()), id: \.offset) { item in
+                item.element.path
+                    .stroke(
+                        item.element.color.opacity(0.88),
+                        style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round)
+                    )
+                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+            }
 
-            // 2. 阶段卡 → 步骤卡
-            for hop in timeline.hops {
-                context.stroke(
-                    hop.path,
-                    with: .color(mixed(hop.color)),
-                    style: StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round)
-                )
-                // 连接点小圆
-                if let target = timeline.nodeRects[hop.targetID] {
-                    let dot = CGRect(x: target.minX - 2.5, y: target.minY + 25 - 2.5, width: 5, height: 5)
-                    context.fill(Path(ellipseIn: dot), with: .color(mixed(hop.color)))
+            // 连接点小圆
+            ForEach(Array(timeline.hops.enumerated()), id: \.offset) { item in
+                if let target = timeline.nodeRects[item.element.targetID] {
+                    Circle()
+                        .fill(item.element.color.opacity(0.88))
+                        .frame(width: 5, height: 5)
+                        .offset(x: target.minX - 2.5, y: target.minY + 22.5)
                 }
             }
 
-            // 3. 光带：沿当前 hop 的路径跑
+            // 光带：沿当前 hop 的路径跑一段亮线
             if let current = timeline.currentHop(at: time) {
                 let hop = timeline.hops[current.index]
                 let head = current.progress
                 let tail = max(0, head - 0.22)
                 let band = hop.path.trimmedPath(from: tail, to: head)
-                // 原版沿 path 跑 8 条带 drop-shadow 的光带；这里用三层描边近似辉光。
-                context.stroke(
-                    band,
-                    with: .color(hop.color.opacity(0.3)),
-                    style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round)
-                )
-                context.stroke(
-                    band,
-                    with: .color(hop.color.opacity(0.9)),
-                    style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round)
-                )
-                context.stroke(
-                    band,
-                    with: .color(.white.opacity(0.98)),
-                    style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round)
-                )
+                band.stroke(hop.color.opacity(0.3), style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round))
+                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+                band.stroke(hop.color.opacity(0.9), style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
+                band.stroke(Color.white.opacity(0.98), style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
             }
+
+            // 根卡母线
+            Canvas { context, _ in
+                drawRootLinks(context: &context)
+            }
+            .frame(width: layout.boardWidth, height: layout.boardHeight)
         }
-        .frame(width: layout.boardWidth, height: layout.boardHeight)
+        .frame(width: layout.boardWidth, height: layout.boardHeight, alignment: .topLeading)
     }
 
     private func mixed(_ color: Color) -> Color {
         // 原版 stroke 是 color-mix(节点色 50%, 卡片色)：这里用节点色降透明度近似。
-        color.opacity(0.55)
+        color.opacity(0.88)
     }
 
-    private func drawRootLinks(context: inout GraphicsContext, size: CGSize) {
+    private func drawRootLinks(context: inout GraphicsContext) {
         let root = layout.rootRect
         let start = CGPoint(x: root.midX, y: root.maxY)
         // 母线走父卡底与 level 顶的中点（原版 `o = n + (s - n)/2`）。
@@ -535,7 +533,7 @@ struct FlowLinksLayer: View {
             let stage = layout.stageRect(index)
             let path = Self.rootLinkPath(from: start, to: CGPoint(x: stage.midX, y: stage.minY), busY: busY)
             let color = tree.color.opacity(0.55)
-            context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round))
+            context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
 
             var dot = Path()
             dot.addEllipse(in: CGRect(x: stage.midX - 2.5, y: stage.minY - 2.5, width: 5, height: 5))
@@ -600,7 +598,12 @@ struct FlowNodeCard: View {
                     RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous)
                         .strokeBorder(palette.cardRing, lineWidth: 0.8)
                 )
-                .overlay { glowLayer }
+                .overlay {
+                    glowLayer.frame(
+                        width: SpecRuneFlowTokens.cardWidth - SpecRuneFlowTokens.trayPadding * 2,
+                        height: SpecRuneFlowTokens.nodeHeight - SpecRuneFlowTokens.trayPadding * 2
+                    )
+                }
                 .shadow(
                     color: palette.cardShadow.opacity(palette.cardShadowOpacity),
                     radius: palette.cardShadowRadius,
@@ -780,46 +783,51 @@ struct FlowNodeCard: View {
     private var glowLayer: some View {
         if glow > 0, !reduceMotion {
             let rise = glow
-            // 原版 `ui-acr-got`：前 30% 保持全亮，之后线性淡出。
+            // 原版 `ui-acr-got`：0–30% 保持满亮，之后线性淡出。
             let fade = rise < 0.3 ? 1 : max(0, 1 - (rise - 0.3) / 0.7)
+
+            // 尺寸取自 affectUI 的 cqw 换算：彩色层 270×88、blur 14、从卡片底边下 45
+            // 升到上 36；白色层 228×74、blur 12、下 48 升到上 24。
             ZStack(alignment: .bottom) {
-                // 彩色光雾：比卡片更宽、强模糊，从底边向上升起再散开。
                 Ellipse()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: node.color.opacity(0.62), location: 0),
-                                .init(color: node.color.opacity(0.24), location: 0.48),
+                                .init(color: node.color.opacity(0.85), location: 0),
+                                .init(color: node.color.opacity(0.38), location: 0.42),
                                 .init(color: node.color.opacity(0), location: 1),
                             ],
                             startPoint: .bottom,
                             endPoint: .top
                         )
                     )
-                    .frame(width: 320, height: 84)
-                    .scaleEffect(x: 1, y: 1 + rise * 2.2, anchor: .bottom)
-                    .offset(y: 28 - rise * 44)
-                    .blur(radius: 34)
+                    .frame(width: 240, height: 76)
+                    .scaleEffect(x: 1 + rise * 0.08, y: 1 + rise, anchor: .bottom)
+                    .offset(y: 45 - rise * 81)
+                    .blur(radius: 14)
 
-                // 白色高光：更窄、更淡，只负责「亮一下」。
                 Ellipse()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: .white.opacity(palette.card == .clear ? 0.16 : 0.7), location: 0),
+                                .init(color: .white.opacity(palette.card == .clear ? 0.16 : 0.75), location: 0),
                                 .init(color: .white.opacity(0), location: 1),
                             ],
                             startPoint: .bottom,
                             endPoint: .top
                         )
                     )
-                    .frame(width: 210, height: 64)
-                    .scaleEffect(x: 1, y: 1 + rise * 2.0, anchor: .bottom)
-                    .offset(y: 22 - rise * 40)
-                    .blur(radius: 26)
+                    .frame(width: 200, height: 62)
+                    .scaleEffect(x: 1 + rise * 0.04, y: 1 + rise * 0.8, anchor: .bottom)
+                    .offset(y: 48 - rise * 72)
+                    .blur(radius: 12)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .opacity(fade)
-            .clipShape(RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous))
+            .clipped()
+            .mask(
+                RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous)
+            )
             .allowsHitTesting(false)
         }
     }
