@@ -357,6 +357,7 @@ struct FlowDemoBoard: View {
     let onSelect: (FlowNodeModel) -> Void
 
     @State private var tree: FlowNodeModel = FlowNodeModel.makeTree(rootColor: .blue)
+    @State private var clockOrigin = Date.timeIntervalSinceReferenceDate
 
     private var layout: FlowLayout {
         FlowLayout(stageCount: 3, childCounts: [4, 3, 3])
@@ -388,7 +389,7 @@ struct FlowDemoBoard: View {
 
         ZStack(alignment: .topLeading) {
             TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { context in
-                let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+                let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate - clockOrigin
                 ZStack(alignment: .topLeading) {
                     FlowLinksLayer(
                         layout: layout,
@@ -527,32 +528,50 @@ struct FlowLinksLayer: View {
     private func drawRootLinks(context: inout GraphicsContext, size: CGSize) {
         let root = layout.rootRect
         let start = CGPoint(x: root.midX, y: root.maxY)
+        // 母线走父卡底与 level 顶的中点（原版 `o = n + (s - n)/2`）。
         let busY = root.maxY + (layout.levelY - root.maxY) / 2
 
-        var bus = Path()
-        bus.move(to: start)
-        bus.addLine(to: CGPoint(x: start.x, y: busY))
-        context.stroke(bus, with: .color(tree.color.opacity(0.55)), style: StrokeStyle(lineWidth: 1.75, lineCap: .round))
-
-        let left = layout.stageRect(0).midX
-        let right = layout.stageRect(layout.stageCount - 1).midX
-        var horizontal = Path()
-        horizontal.move(to: CGPoint(x: left, y: busY))
-        horizontal.addLine(to: CGPoint(x: right, y: busY))
-        context.stroke(horizontal, with: .color(tree.color.opacity(0.4)), style: StrokeStyle(lineWidth: 1.75, lineCap: .round))
-
         for index in 0 ..< layout.stageCount {
-            let midX = layout.stageRect(index).midX
-            var branch = Path()
-            branch.move(to: CGPoint(x: midX, y: busY))
-            branch.addLine(to: CGPoint(x: midX, y: layout.levelY))
-            let color = tree.children[index].color
-            context.stroke(branch, with: .color(color.opacity(0.55)), style: StrokeStyle(lineWidth: 1.75, lineCap: .round))
+            let stage = layout.stageRect(index)
+            let path = Self.rootLinkPath(from: start, to: CGPoint(x: stage.midX, y: stage.minY), busY: busY)
+            let color = tree.color.opacity(0.55)
+            context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 1.75, lineCap: .round, lineJoin: .round))
 
             var dot = Path()
-            dot.addEllipse(in: CGRect(x: midX - 2.5, y: busY - 2.5, width: 5, height: 5))
-            context.fill(dot, with: .color(color.opacity(0.55)))
+            dot.addEllipse(in: CGRect(x: stage.midX - 2.5, y: stage.minY - 2.5, width: 5, height: 5))
+            context.fill(dot, with: .color(color))
         }
+    }
+
+    /// 原版 `c(e, 0)` 的根节点分支：竖下 → 圆角 → 横移 → 圆角 → 竖下。
+    static func rootLinkPath(from start: CGPoint, to end: CGPoint, busY: CGFloat) -> Path {
+        var path = Path()
+        path.move(to: start)
+
+        let dx = end.x - start.x
+        let absDx = abs(dx)
+        guard absDx >= 12 else {
+            // 正下方：一条直线就够（原版同样走 `V` 分支）。
+            path.addLine(to: CGPoint(x: start.x, y: end.y))
+            return path
+        }
+
+        let sign: CGFloat = dx > 0 ? 1 : -1
+        let bendOut = max(0, min(8, absDx / 2, (busY - start.y) / 2))
+        let bendIn = max(0, min(8, absDx / 2 - bendOut, (end.y - busY) / 2))
+
+        path.addLine(to: CGPoint(x: start.x, y: busY - bendOut))
+        path.addQuadCurve(
+            to: CGPoint(x: start.x + sign * bendOut, y: busY),
+            control: CGPoint(x: start.x, y: busY)
+        )
+        path.addLine(to: CGPoint(x: end.x - sign * bendIn, y: busY))
+        path.addQuadCurve(
+            to: CGPoint(x: end.x, y: busY + bendIn),
+            control: CGPoint(x: end.x, y: busY)
+        )
+        path.addLine(to: CGPoint(x: end.x, y: end.y))
+        return path
     }
 }
 
@@ -761,26 +780,47 @@ struct FlowNodeCard: View {
     private var glowLayer: some View {
         if glow > 0, !reduceMotion {
             let rise = glow
-            Ellipse()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            node.color.opacity(0.75 * (1 - rise)),
-                            node.color.opacity(0.28 * (1 - rise)),
-                            .clear,
-                        ],
-                        center: .bottom,
-                        startRadius: 2,
-                        endRadius: 120 * (1 + rise)
+            // 原版 `ui-acr-got`：前 30% 保持全亮，之后线性淡出。
+            let fade = rise < 0.3 ? 1 : max(0, 1 - (rise - 0.3) / 0.7)
+            ZStack(alignment: .bottom) {
+                // 彩色光雾：比卡片更宽、强模糊，从底边向上升起再散开。
+                Ellipse()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: node.color.opacity(0.62), location: 0),
+                                .init(color: node.color.opacity(0.24), location: 0.48),
+                                .init(color: node.color.opacity(0), location: 1),
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
                     )
-                )
-                .frame(height: 70)
-                .scaleEffect(x: 1 + rise * 0.5, y: 1 + rise * 1.2, anchor: .bottom)
-                .offset(y: -18 - rise * 10)
-                .opacity(1 - rise)
-                .blur(radius: 6)
-                .clipShape(RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous))
-                .allowsHitTesting(false)
+                    .frame(width: 320, height: 84)
+                    .scaleEffect(x: 1, y: 1 + rise * 2.2, anchor: .bottom)
+                    .offset(y: 28 - rise * 44)
+                    .blur(radius: 34)
+
+                // 白色高光：更窄、更淡，只负责「亮一下」。
+                Ellipse()
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(palette.card == .clear ? 0.16 : 0.7), location: 0),
+                                .init(color: .white.opacity(0), location: 1),
+                            ],
+                            startPoint: .bottom,
+                            endPoint: .top
+                        )
+                    )
+                    .frame(width: 210, height: 64)
+                    .scaleEffect(x: 1, y: 1 + rise * 2.0, anchor: .bottom)
+                    .offset(y: 22 - rise * 40)
+                    .blur(radius: 26)
+            }
+            .opacity(fade)
+            .clipShape(RoundedRectangle(cornerRadius: SpecRuneFlowTokens.cardRadius, style: .continuous))
+            .allowsHitTesting(false)
         }
     }
 }
