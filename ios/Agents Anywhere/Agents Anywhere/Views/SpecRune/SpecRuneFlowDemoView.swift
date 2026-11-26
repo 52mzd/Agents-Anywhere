@@ -28,16 +28,31 @@ struct FlowNodeModel: Identifiable {
     let color: Color
     let colorIndex: Int
     var children: [FlowNodeModel]
+    /// 面板里展示的任务描述（原版 `ui-acr__panel-task`）。
+    var task: String? = nil
+    /// 工具 chip（原版 `ui-acr__tool` / `ui-acr__chip`）。
+    var tools: [String] = []
+    /// 最近一条消息（原版 `ui-acr__panel-last`）。
+    var last: String? = nil
+    var elapsed: String? = nil
+    var cost: String? = nil
+    var tokens: String? = nil
 
     static func makeTree(rootColor: Color) -> FlowNodeModel {
                 let plan = [
-            node("1.1", "需求探索", "explore", .done, "已确认 6 项事实", 1, .one, "SpecRune prd.md · design.md", 0),
+            node("1.1", "需求探索", "explore", .done, "已确认 6 项事实", 1, .one, "SpecRune prd.md · design.md", 0,
+                 task: "读代码确认事实，把模糊点写进 prd.md 的 Confirmed Facts",
+                 tools: ["magnifyingglass", "doc.text"], last: "Lead：6 项事实已确认，2 项待定",
+                 elapsed: "4m 12s", cost: "$0.42", tokens: "180k / 200k"),
             node("1.2", "调研", "research", .unknown, "无信号", 0, .zero, nil, 0),
             node("1.3", "配置上下文", "context", .done, "7 + 5 条已策展", 1, .one, "SpecRune 清单 12 条", 0),
             node("1.4", "激活任务", "start", .done, "已绑定本会话", 1, .one, nil, 0),
         ]
         let execute = [
-            node("2.1", "实现", "implement", .active, "正在复刻卡片与连线", 0.64, .percent(0.64), "SpecRune 4/6 文件已改", 1),
+            node("2.1", "实现", "implement", .active, "正在复刻卡片与连线", 0.64, .percent(0.64), "SpecRune 4/6 文件已改", 1,
+                 task: "按 prd 与 design 落地视觉层，保持零改上游",
+                 tools: ["hammer", "square.grid.3x3"], last: "Lead：卡片与连线已就位，补光带",
+                 elapsed: "12m 08s", cost: "$1.86", tokens: "110k / 200k"),
             node("2.2", "新鲜复查", "review", .idle, "等待实现完成", 0, .zero, nil, 1),
             node("2.3", "修复", "fix", .idle, "通常不需要", 0, .zero, nil, 1),
         ]
@@ -82,12 +97,16 @@ struct FlowNodeModel: Identifiable {
 
     private static func node(
         _ id: String, _ title: String, _ model: String, _ status: FlowNodeStatus,
-        _ activity: String, _ ratio: Double, _ label: ProgressLabel, _ foot: String?, _ colorIndex: Int
+        _ activity: String, _ ratio: Double, _ label: ProgressLabel, _ foot: String?, _ colorIndex: Int,
+        task: String? = nil, tools: [String] = [], last: String? = nil,
+        elapsed: String? = nil, cost: String? = nil, tokens: String? = nil
     ) -> FlowNodeModel {
         FlowNodeModel(
             id: id, title: title, model: model, status: status, activity: activity,
             progress: ratio, progressLabel: label.text, footText: foot,
-            color: SpecRuneFlowTokens.nodeColors[colorIndex], colorIndex: colorIndex, children: []
+            color: SpecRuneFlowTokens.nodeColors[colorIndex], colorIndex: colorIndex, children: [],
+            task: task, tools: tools, last: last,
+            elapsed: elapsed, cost: cost, tokens: tokens
         )
     }
 
@@ -1134,69 +1153,159 @@ struct FlowNodePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                PixelMark(
-                    seed: node.id, color: node.color, active: false,
-                    time: 0, reduceMotion: true, palette: palette
-                )
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(node.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(palette.ink)
-                        .lineLimit(1)
-                    Text(node.id)
-                        .font(.system(size: 11))
-                        .foregroundStyle(palette.muted)
-                }
-                Spacer(minLength: 0)
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(palette.muted)
-                        .frame(width: 24, height: 24)
-                        .background(palette.fill, in: RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-            }
-
-            Text(node.activity)
-                .font(.system(size: 12.5))
-                .foregroundStyle(palette.text)
-                .lineLimit(2)
-
-            Divider().overlay(palette.line)
-
-            HStack(spacing: 6) {
-                ForEach(actions, id: \.value) { action in
-                    Button {
-                        onAction(action.value)
-                    } label: {
-                        Text(action.title)
-                            .font(.system(size: 12.5, weight: .medium))
-                            .foregroundStyle(action.primary ? Color.white : palette.ink)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 32)
-                            .background(
-                                action.primary ? palette.brandForeground : palette.card,
-                                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(action.primary ? Color.clear : palette.line, lineWidth: 0.8)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            head
+            if let task = node.task { taskRow(task) }
+            if let model = node.model { modelChip(model) }
+            if hasUsage { usageGrid }
+            if !node.tools.isEmpty { toolChips }
+            if let last = node.last { lastRow(last) }
+            actionRow
         }
         .padding(12)
         .frame(width: 300)
-        .background(palette.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radiusLarge, style: .continuous)
+                .fill(palette.card)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radiusLarge, style: .continuous)
                 .strokeBorder(palette.cardRing, lineWidth: 0.8)
         )
         .shadow(color: .black.opacity(0.22), radius: 22, y: 10)
+    }
+
+    // MARK: 段落
+
+    private var head: some View {
+        HStack(spacing: 8) {
+            Text(node.title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(palette.muted)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func taskRow(_ task: String) -> some View {
+        Text(task)
+            .font(.system(size: 12.5))
+            .foregroundStyle(palette.text)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func modelChip(_ model: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                .fill(node.color)
+                .frame(width: 10, height: 10)
+            Text(model)
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.text)
+                .lineLimit(1)
+        }
+        .padding(.leading, 7)
+        .padding(.trailing, 9)
+        .frame(height: 24)
+        .background(palette.tag, in: Capsule())
+    }
+
+    private var hasUsage: Bool {
+        node.elapsed != nil || node.cost != nil || node.tokens != nil
+    }
+
+    private var usageGrid: some View {
+        HStack(spacing: 8) {
+            usageItem("Time", node.elapsed)
+            usageItem("Cost", node.cost)
+            usageItem("Tokens", node.tokens)
+        }
+        .padding(.vertical, 8)
+        .overlay(alignment: .top) {
+            Rectangle().fill(palette.line).frame(height: 1)
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(palette.line).frame(height: 1)
+        }
+    }
+
+    private func usageItem(_ label: String, _ value: String?) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundStyle(palette.muted)
+            Text(value ?? "—")
+                .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var toolChips: some View {
+        HStack(spacing: 4) {
+            ForEach(node.tools, id: \.self) { tool in
+                HStack(spacing: 5) {
+                    Image(systemName: tool)
+                        .font(.system(size: 10, weight: .medium))
+                    Text(tool)
+                        .font(.system(size: 12.5))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(palette.text)
+                .padding(.leading, 7)
+                .padding(.trailing, 9)
+                .frame(height: 24)
+                .background(palette.tag, in: Capsule())
+            }
+        }
+    }
+
+    private func lastRow(_ last: String) -> some View {
+        HStack(alignment: .top, spacing: 5) {
+            Image(systemName: "arrow.turn.down.left")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(palette.muted)
+                .padding(.top, 2)
+            Text(last)
+                .font(.system(size: 12.5))
+                .foregroundStyle(palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var actionRow: some View {
+        HStack(spacing: 6) {
+            ForEach(actions, id: \.value) { action in
+                Button {
+                    onAction(action.value)
+                } label: {
+                    Text(action.title)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(action.primary ? Color.white : palette.ink)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
+                        .background(
+                            action.primary ? palette.brandForeground : palette.card,
+                            in: RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+                                .strokeBorder(action.primary ? Color.clear : palette.line, lineWidth: 0.8)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 2)
     }
 }
 
@@ -1232,7 +1341,9 @@ struct SpecRuneFlowDemoView: View {
                     resetToken: resetToken
                 ) {
                     FlowDemoBoard(palette: palette, reduceMotion: reduceMotion, appeared: appeared) { node in
-                        selected = node
+                        withAnimation(reduceMotion ? nil : SpecRuneFlowTokens.pop) {
+                            selected = node
+                        }
                     }
                 }
                 .ignoresSafeArea(edges: .bottom)
@@ -1241,15 +1352,19 @@ struct SpecRuneFlowDemoView: View {
                     ZStack {
                         Color.black.opacity(0.22)
                             .ignoresSafeArea()
-                            .onTapGesture { selected = nil }
+                            .onTapGesture {
+                                withAnimation(reduceMotion ? nil : SpecRuneFlowTokens.pop) { selected = nil }
+                            }
                         FlowNodePanel(
                             node: node,
                             palette: palette,
                             onAction: { action in
                                 lastAction = "\(node.title) → \(action)"
-                                selected = nil
+                                withAnimation(reduceMotion ? nil : SpecRuneFlowTokens.pop) { selected = nil }
                             },
-                            onClose: { selected = nil }
+                            onClose: {
+                                withAnimation(reduceMotion ? nil : SpecRuneFlowTokens.pop) { selected = nil }
+                            }
                         )
                         .transition(.opacity.combined(with: .offset(y: -4)).combined(with: .scale(scale: 0.98)))
                     }
@@ -1271,11 +1386,16 @@ struct SpecRuneFlowDemoView: View {
                 }
             }
             .onAppear {
-                guard !reduceMotion else {
+                if !reduceMotion {
+                    withAnimation(SpecRuneFlowTokens.enter) { appeared = true }
+                } else {
                     appeared = true
-                    return
                 }
-                withAnimation(SpecRuneFlowTokens.enter) { appeared = true }
+                // 截图/验收用：带 --flow-demo-panel 时直接弹出一个节点的面板。
+                if ProcessInfo.processInfo.arguments.contains("--flow-demo-panel") {
+                    let tree = FlowNodeModel.makeTree(rootColor: .blue)
+                    selected = tree.children.first?.children.first
+                }
             }
             .navigationTitle("任务流 · 视觉 Demo")
             .navigationBarTitleDisplayMode(.inline)

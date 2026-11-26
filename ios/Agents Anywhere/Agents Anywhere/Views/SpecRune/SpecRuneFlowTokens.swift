@@ -142,6 +142,9 @@ enum SpecRuneFlowTokens {
     static let trayRadius: CGFloat = 16
     /// 卡片圆角 = 托盘圆角 - 4。
     static let cardRadius: CGFloat = 12
+    /// `--aui-radius` / `--aui-radius-lg`。
+    static let radius: CGFloat = 10
+    static let radiusLarge: CGFloat = 16
 
     /// 节点高度（托盘 + 卡片），布局与闪光裁剪共用。
     static let nodeHeight: CGFloat = 128
