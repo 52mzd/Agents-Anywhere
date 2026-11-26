@@ -1144,6 +1144,10 @@ struct FlowNodePanel: View {
     let onAction: (String) -> Void
     let onClose: () -> Void
 
+    @State private var composing = false
+    @State private var draft = ""
+    @FocusState private var inputFocused: Bool
+
     private let actions: [(title: String, value: String, primary: Bool)] = [
         ("Approve", "approve", true),
         ("Decline", "decline", false),
@@ -1162,7 +1166,7 @@ struct FlowNodePanel: View {
             actionRow
         }
         .padding(12)
-        .frame(width: 300)
+        .frame(width: 320)
         .background(
             RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radiusLarge, style: .continuous)
                 .fill(palette.card)
@@ -1172,6 +1176,12 @@ struct FlowNodePanel: View {
                 .strokeBorder(palette.cardRing, lineWidth: 0.8)
         )
         .shadow(color: .black.opacity(0.22), radius: 22, y: 10)
+        .onAppear {
+            // 截图用：带 --flow-demo-compose 时直接进输入态。
+            if ProcessInfo.processInfo.arguments.contains("--flow-demo-compose") {
+                composing = true
+            }
+        }
     }
 
     // MARK: 段落
@@ -1282,31 +1292,100 @@ struct FlowNodePanel: View {
         }
     }
 
+    /// 原版 `ui-acr__acts` / `ui-acr__say` 二选一：点 Message 换成输入框。
+    @ViewBuilder
     private var actionRow: some View {
-        HStack(spacing: 6) {
-            ForEach(actions, id: \.value) { action in
-                Button {
-                    onAction(action.value)
-                } label: {
-                    Text(action.title)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundStyle(action.primary ? Color.white : palette.ink)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 30)
+        if composing {
+            HStack(spacing: 6) {
+                TextField("Tell \(node.title)…", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(palette.ink)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .background(
+                        RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+                            .fill(palette.card)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+                            .strokeBorder(inputFocused ? palette.muted : palette.line, lineWidth: 1)
+                    )
+                    .focused($inputFocused)
+                    .submitLabel(.send)
+                    .onSubmit(send)
+
+                Button(action: send) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .frame(width: 30, height: 30)
                         .background(
-                            action.primary ? palette.brandForeground : palette.card,
+                            palette.brandForeground,
                             in: RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
-                                .strokeBorder(action.primary ? Color.clear : palette.line, lineWidth: 0.8)
                         )
                 }
                 .buttonStyle(.plain)
+                .disabled(trimmedDraft.isEmpty)
+                .opacity(trimmedDraft.isEmpty ? 0.4 : 1)
             }
+            .padding(.top, 2)
+            .onAppear { inputFocused = true }
+        } else {
+            HStack(spacing: 5) {
+                actionButton("Message", primary: false) {
+                    withAnimation(SpecRuneFlowTokens.pop) {
+                        composing = true
+                        inputFocused = true
+                    }
+                }
+                ForEach(actions, id: \.value) { action in
+                    actionButton(action.title, primary: action.primary) {
+                        onAction(action.value)
+                    }
+                }
+            }
+            .padding(.top, 2)
         }
-        .padding(.top, 2)
     }
+
+    private var trimmedDraft: String {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func send() {
+        guard !trimmedDraft.isEmpty else { return }
+        onAction("message:\(trimmedDraft)")
+        draft = ""
+        composing = false
+        inputFocused = false
+    }
+
+    private func actionButton(
+        _ title: String,
+        primary: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(primary ? Color.white : palette.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .background(
+                    primary ? palette.brandForeground : palette.card,
+                    in: RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: SpecRuneFlowTokens.radius, style: .continuous)
+                        .strokeBorder(primary ? Color.clear : palette.line, lineWidth: 0.8)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
 }
 
 // MARK: - Demo 页
